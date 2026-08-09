@@ -172,7 +172,18 @@ export const BOOKKEEPING_ARTIFACT_PREFIXES: readonly string[] = [".mulch/", ".se
  * own constant rather than overloading the bookkeeping list, because the reason
  * they are ignorable is different (harness-written, not warren-committed).
  */
-export const HARNESS_STATE_PREFIXES: readonly string[] = [".claude/"];
+export const HARNESS_STATE_PREFIXES: readonly string[] = [
+	".claude/",
+	// Sibling FILE, not covered by the `.claude/` directory prefix —
+	// `".claude.json".startsWith(".claude/")` is false. The claude-code
+	// harness writes it on every run, so without this entry a no-code-change
+	// run misclassifies as `dropped_commit` and reaps as failed.
+	".claude.json",
+	// Burrow mirrors the resolved git identity here at workspace setup
+	// (see the identity-mode note in src/supervisor/git-identity.ts).
+	// Runtime-written, never agent work.
+	".gitconfig.burrow",
+];
 
 /**
  * Prefixes whose dirty paths are never lost agent work: warren-committed

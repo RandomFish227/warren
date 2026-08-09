@@ -62,4 +62,26 @@ describe("isBookkeepingOnlyDirty", () => {
 	test("false when harness scratch is mixed with real uncommitted work", () => {
 		expect(isBookkeepingOnlyDirty([".claude/settings.local.json", "src/foo.ts"])).toBe(false);
 	});
+
+	test("true for .claude.json, which the .claude/ directory prefix does not cover", () => {
+		expect(".claude.json".startsWith(".claude/")).toBe(false);
+		expect(isBookkeepingOnlyDirty([".claude.json"])).toBe(true);
+	});
+
+	test("true for .gitconfig.burrow, mirrored into the workspace by the runtime", () => {
+		expect(isBookkeepingOnlyDirty([".gitconfig.burrow"])).toBe(true);
+	});
+
+	test("true for the full dirty set a no-code-change claude-code run leaves behind", () => {
+		expect(
+			isBookkeepingOnlyDirty([
+				".gitconfig.burrow",
+				".claude.json",
+				".claude/.last-cleanup",
+				".claude/backups/",
+				".claude/policy-limits.json",
+				".claude/projects/",
+			]),
+		).toBe(true);
+	});
 });
