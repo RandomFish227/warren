@@ -87,6 +87,9 @@ export interface PollProjectCiFixerInput {
 	 * built-in), used to reconstruct each PR's head ref. */
 	readonly branchPrefix: string;
 	readonly token: string;
+	/** Forgejo API token (`FORGEJO_TOKEN`). Falls back to `token` for Forgejo
+	 * PRs when unset. (warren-fg01) */
+	readonly forgejoToken?: string;
 	readonly fetch?: typeof fetch;
 	readonly history: FixAttemptHistoryFn;
 	readonly spawn: CiFixerSpawnFn;
@@ -125,12 +128,16 @@ async function pollCandidate(
 		return { kind: "error", prUrl: candidate.prUrl, reason: "unparseable PR url" };
 	}
 
+	// warren-fg01: pick the right token for the PR's forge provider.
+	const prToken = parsed.kind === "forgejo" ? (input.forgejoToken ?? input.token) : input.token;
 	const ref = composeRunBranch(input.branchPrefix, candidate.runId);
 	const fetched = await fetchCheckRuns({
 		owner: parsed.owner,
 		repo: parsed.repo,
 		ref,
-		token: input.token,
+		token: prToken,
+		apiBase: parsed.apiBase,
+		kind: parsed.kind,
 		...(input.fetch !== undefined ? { fetch: input.fetch } : {}),
 	});
 	if (fetched.kind !== "ok") {
@@ -149,7 +156,12 @@ async function pollCandidate(
 		return { kind: "skipped", prUrl: candidate.prUrl, reason: decision.reason };
 	}
 
-	const logTail = await resolveLogTail(input, { owner: parsed.owner, repo: parsed.repo }, failures);
+	const logTail = await resolveLogTail(
+		input,
+		{ owner: parsed.owner, repo: parsed.repo, apiBase: parsed.apiBase, kind: parsed.kind },
+		prToken,
+		failures,
+	);
 	const prompt = buildFixerPrompt({ prUrl: candidate.prUrl, failures, logTail });
 	const spawned = await input.spawn({
 		prompt,
@@ -175,7 +187,13 @@ async function pollCandidate(
  */
 async function resolveLogTail(
 	input: PollProjectCiFixerInput,
-	repo: { owner: string; repo: string },
+	repo: {
+		owner: string;
+		repo: string;
+		apiBase: string;
+		kind: import("../git-providers/resolve.ts").GitProviderKind;
+	},
+	token: string,
 	failures: readonly CheckRun[],
 ): Promise<string | null> {
 	if (input.logTailLines <= 0) return null;
@@ -186,7 +204,9 @@ async function resolveLogTail(
 				owner: repo.owner,
 				repo: repo.repo,
 				jobId: extractJobId(failure.detailsUrl, failure.id),
-				token: input.token,
+				token,
+				apiBase: repo.apiBase,
+				kind: repo.kind,
 				...(input.fetch !== undefined ? { fetch: input.fetch } : {}),
 			},
 			input.logTailLines,

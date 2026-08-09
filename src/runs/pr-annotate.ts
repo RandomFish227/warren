@@ -24,16 +24,21 @@
  *
  * Like `openPullRequest`, all errors are returned as discriminated-union
  * results; reap maps them into `reap_failed step=pr_annotate_preview`
- * events so a GitHub outage never fails the run.
+ * events so a forge outage never fails the run.
+ *
+ * Forgejo support (warren-fg01): `parsePrUrl` now handles Forgejo PR URL
+ * shapes (`/pulls/<n>` plural) and derives the correct API base from the URL.
  */
 
+import type { GitProviderKind } from "../git-providers/resolve.ts";
 import { PREVIEW_FRAGMENT_END, PREVIEW_FRAGMENT_START } from "./pr.ts";
+import { buildApiHeaders } from "./pr-checks.ts";
 
-const GITHUB_API_BASE = "https://api.github.com";
 const USER_AGENT = "warren-reap-pr-annotate";
 
 export interface AnnotatePrPreviewInput {
-	/** Full GitHub PR URL — e.g. `https://github.com/owner/repo/pull/77`. */
+	/** Full forge PR URL — e.g. `https://github.com/owner/repo/pull/77`
+	 *  or `https://forgejo.example.com/owner/repo/pulls/77`. */
 	readonly prUrl: string;
 	readonly token: string;
 	/** Outcome of the preview launch — drives what gets patched in. */
@@ -62,7 +67,7 @@ export async function annotatePrPreview(
 		return {
 			ok: false,
 			reason: "missing_token",
-			message: "GITHUB_TOKEN unset; cannot annotate pull request",
+			message: "forge token unset; cannot annotate pull request",
 		};
 	}
 	const parsed = parsePrUrl(input.prUrl);
@@ -70,12 +75,12 @@ export async function annotatePrPreview(
 		return {
 			ok: false,
 			reason: "bad_url",
-			message: `unrecognized GitHub PR URL: ${input.prUrl}`,
+			message: `unrecognized forge PR URL: ${input.prUrl}`,
 		};
 	}
 
-	const headers = buildHeaders(input.token);
-	const apiUrl = `${GITHUB_API_BASE}/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`;
+	const headers = buildApiHeaders(input.token, parsed.kind, USER_AGENT);
+	const apiUrl = `${parsed.apiBase}/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`;
 
 	let getRes: Response;
 	try {
@@ -133,33 +138,87 @@ interface ParsedPrUrl {
 	readonly owner: string;
 	readonly repo: string;
 	readonly number: number;
+	readonly apiBase: string;
+	readonly kind: GitProviderKind;
+}
+
+function parseGitHubPrUrl(url: string): ParsedPrUrl | null {
+	const ghWeb = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/.exec(url);
+	if (ghWeb !== null) {
+		const n = Number.parseInt(ghWeb[3] as string, 10);
+		if (!Number.isFinite(n) || n <= 0) return null;
+		return {
+			owner: ghWeb[1] as string,
+			repo: ghWeb[2] as string,
+			number: n,
+			apiBase: "https://api.github.com",
+			kind: "github",
+		};
+	}
+	const ghApi = /^https?:\/\/api\.github\.com\/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)\/?$/.exec(url);
+	if (ghApi !== null) {
+		const n = Number.parseInt(ghApi[3] as string, 10);
+		if (!Number.isFinite(n) || n <= 0) return null;
+		return {
+			owner: ghApi[1] as string,
+			repo: ghApi[2] as string,
+			number: n,
+			apiBase: "https://api.github.com",
+			kind: "github",
+		};
+	}
+	return null;
 }
 
 /**
- * Accepts both the GitHub web URL (`https://github.com/o/r/pull/N`) and the
- * REST API resource URL (`https://api.github.com/repos/o/r/pulls/N`) so the
- * annotator works whether reap stashed `html_url` (web) or `url` (api).
- * `openPullRequest` returns `html_url`, so the common case is the first
- * shape — the second shape is a defensive fallback for callers that pass
- * `pulls[].url` instead of `pulls[].html_url`.
+ * Accepts forge PR URLs in these shapes:
+ *   - GitHub web:   `https://github.com/o/r/pull/N`
+ *   - GitHub API:   `https://api.github.com/repos/o/r/pulls/N`
+ *   - Forgejo web:  `https://<host>/o/r/pulls/N`  (plural)
+ *   - Forgejo API:  `https://<host>/api/v1/repos/o/r/pulls/N`
+ *
+ * `openPullRequest` returns `html_url`, so the common case is the web shape.
+ * The API shape is a defensive fallback for callers that pass `pulls[].url`.
  */
 export function parsePrUrl(input: string): ParsedPrUrl | null {
 	const trimmed = input.trim();
 	if (trimmed === "") return null;
-	const web = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/.exec(trimmed);
-	if (web !== null) {
-		const n = Number.parseInt(web[3] as string, 10);
-		if (!Number.isFinite(n) || n <= 0) return null;
-		return { owner: web[1] as string, repo: web[2] as string, number: n };
-	}
-	const api = /^https?:\/\/api\.github\.com\/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)\/?$/.exec(
+
+	const gh = parseGitHubPrUrl(trimmed);
+	if (gh !== null) return gh;
+
+	// Forgejo web: /pulls/ (plural), github.com excluded by lookahead
+	const fjWeb = /^https?:\/\/(?!github\.com\/)([^/]+)\/([^/]+)\/([^/]+)\/pulls\/(\d+)\/?$/.exec(
 		trimmed,
 	);
-	if (api !== null) {
-		const n = Number.parseInt(api[3] as string, 10);
+	if (fjWeb !== null) {
+		const n = Number.parseInt(fjWeb[4] as string, 10);
 		if (!Number.isFinite(n) || n <= 0) return null;
-		return { owner: api[1] as string, repo: api[2] as string, number: n };
+		return {
+			owner: fjWeb[2] as string,
+			repo: fjWeb[3] as string,
+			number: n,
+			apiBase: `https://${fjWeb[1] as string}/api/v1`,
+			kind: "forgejo",
+		};
 	}
+
+	// Forgejo API: <host>/api/v1/repos/o/r/pulls/N
+	const fjApi = /^https?:\/\/([^/]+)\/api\/v1\/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)\/?$/.exec(
+		trimmed,
+	);
+	if (fjApi !== null) {
+		const n = Number.parseInt(fjApi[4] as string, 10);
+		if (!Number.isFinite(n) || n <= 0) return null;
+		return {
+			owner: fjApi[2] as string,
+			repo: fjApi[3] as string,
+			number: n,
+			apiBase: `https://${fjApi[1] as string}/api/v1`,
+			kind: "forgejo",
+		};
+	}
+
 	return null;
 }
 
@@ -195,16 +254,6 @@ export function replaceFragment(body: string, newFragment: string): string {
 	const trimmed = body.replace(/\s+$/, "");
 	const separator = trimmed === "" ? "" : "\n\n";
 	return `${trimmed}${separator}## Preview\n\n${newFragment}\n`;
-}
-
-function buildHeaders(token: string): Record<string, string> {
-	return {
-		accept: "application/vnd.github+json",
-		authorization: `Bearer ${token}`,
-		"content-type": "application/json",
-		"user-agent": USER_AGENT,
-		"x-github-api-version": "2022-11-28",
-	};
 }
 
 async function readJson(res: Response): Promise<unknown> {

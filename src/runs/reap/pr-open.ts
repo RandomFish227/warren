@@ -1,4 +1,5 @@
 import { CI_FIXER_TRIGGER } from "../../ci-fixer/poller.ts";
+import { resolveGitProviderFromUrl, selectProviderToken } from "../../git-providers/resolve.ts";
 import { parseGitHubUrl } from "../../projects/url.ts";
 import { authenticatedCloneUrl } from "../../workspace/git/clone-url.ts";
 import {
@@ -67,11 +68,17 @@ export interface TryOpenPrInput {
 }
 
 export async function tryOpenPr(input: TryOpenPrInput): Promise<OpenPullRequestResult> {
-	if (input.autoOpen.token === "") {
+	const provider = resolveGitProviderFromUrl(input.project.gitUrl);
+	const token = selectProviderToken(
+		provider.kind,
+		input.autoOpen.token,
+		input.autoOpen.forgejoToken,
+	);
+	if (token === "") {
 		return {
 			ok: false,
 			reason: "missing_token",
-			message: "GITHUB_TOKEN unset; skipping auto-open PR",
+			message: "forge token unset; skipping auto-open PR",
 		};
 	}
 	const parsed = parseGitHubUrl(input.project.gitUrl);
@@ -102,7 +109,9 @@ export async function tryOpenPr(input: TryOpenPrInput): Promise<OpenPullRequestR
 		base: input.project.defaultBranch,
 		title: content.title,
 		body: content.body,
-		token: input.autoOpen.token,
+		token,
+		apiBase: provider.apiBase,
+		kind: provider.kind,
 	});
 }
 
@@ -411,16 +420,24 @@ export async function runPrOpen(input: RunPrOpenInput): Promise<string | null> {
 			// warren-ab66: under K8s (no host workspace) rebuild the commit/diff-stat
 			// sections from the pushed run branch fetched into the project clone. Needs
 			// a token to auth the fetch; a token-less env keeps the empty-section path.
-			...(input.workspacePath === null && input.autoOpen.token !== ""
-				? {
-						cloneFetch: {
-							runBranch: input.branch,
-							runId: input.run.id,
-							gitUrl: input.project.gitUrl,
-							token: input.autoOpen.token,
-						},
-					}
-				: {}),
+			...((): object => {
+				if (input.workspacePath !== null) return {};
+				const cloneProvider = resolveGitProviderFromUrl(input.project.gitUrl);
+				const cloneToken = selectProviderToken(
+					cloneProvider.kind,
+					input.autoOpen.token,
+					input.autoOpen.forgejoToken,
+				);
+				if (cloneToken === "") return {};
+				return {
+					cloneFetch: {
+						runBranch: input.branch,
+						runId: input.run.id,
+						gitUrl: input.project.gitUrl,
+						token: cloneToken,
+					},
+				};
+			})(),
 		});
 		const prArgs: TryOpenPrInput = {
 			project: input.project,

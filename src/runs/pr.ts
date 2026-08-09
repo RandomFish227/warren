@@ -60,6 +60,10 @@ export interface OpenPullRequestInput {
 	readonly title: string;
 	readonly body: string;
 	readonly token: string;
+	/** Forge API base URL. Defaults to `GITHUB_API_BASE`. (warren-fg01) */
+	readonly apiBase?: string;
+	/** Provider kind — controls request headers. Defaults to `"github"`. */
+	readonly kind?: import("../git-providers/resolve.ts").GitProviderKind;
 }
 
 export type OpenPullRequestResult =
@@ -89,12 +93,14 @@ export async function openPullRequest(
 		return {
 			ok: false,
 			reason: "missing_token",
-			message: "GITHUB_TOKEN unset; cannot open pull request",
+			message: "forge token unset; cannot open pull request",
 		};
 	}
 
-	const url = `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/pulls`;
-	const headers = buildHeaders(input.token);
+	const apiBase = input.apiBase ?? GITHUB_API_BASE;
+	const kind = input.kind ?? "github";
+	const url = `${apiBase}/repos/${input.owner}/${input.repo}/pulls`;
+	const headers = buildHeaders(input.token, kind);
 
 	let res: Response;
 	try {
@@ -160,16 +166,20 @@ async function findExistingPr(
 	input: OpenPullRequestInput,
 	deps: PrFetcher,
 ): Promise<string | null> {
+	const apiBase = input.apiBase ?? GITHUB_API_BASE;
+	const kind = input.kind ?? "github";
+	// GitHub uses `head=owner:branch`; Forgejo uses just `head=branch` (warren-fg01).
+	const headParam = kind === "forgejo" ? input.head : `${input.owner}:${input.head}`;
 	const params = new URLSearchParams({
-		head: `${input.owner}:${input.head}`,
+		head: headParam,
 		base: input.base,
 		state: "open",
 		per_page: "1",
 	});
-	const url = `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/pulls?${params.toString()}`;
+	const url = `${apiBase}/repos/${input.owner}/${input.repo}/pulls?${params.toString()}`;
 	let res: Response;
 	try {
-		res = await deps.fetch(url, { method: "GET", headers: buildHeaders(input.token) });
+		res = await deps.fetch(url, { method: "GET", headers: buildHeaders(input.token, kind) });
 	} catch {
 		return null;
 	}
@@ -333,6 +343,14 @@ export interface AutoOpenPrConfig {
 	 */
 	readonly gitToken?: string;
 	readonly warrenBaseUrl: string | null;
+	/**
+	 * `FORGEJO_TOKEN` for Forgejo / Gitea instances (warren-fg01). Used for
+	 * both REST API calls (`openPullRequest`, `checkPullRequestMerged`) and
+	 * git network ops against Forgejo-hosted private repos. Falls back to
+	 * `token` (GITHUB_TOKEN) when the operator shares one PAT, though a
+	 * dedicated Forgejo PAT is recommended.
+	 */
+	readonly forgejoToken?: string;
 }
 
 export type AutoOpenEnvLike = Readonly<Record<string, string | undefined>>;
@@ -361,6 +379,8 @@ export function loadAutoOpenPrConfigFromEnv(env: AutoOpenEnvLike = process.env):
 		// Raw only — never the synthetic stub-token (see AutoOpenPrConfig.gitToken).
 		gitToken: env.GITHUB_TOKEN,
 		warrenBaseUrl: env.WARREN_BASE_URL ?? null,
+		// warren-fg01: Forgejo token, raw only (same reasoning as gitToken).
+		forgejoToken: env.FORGEJO_TOKEN,
 	};
 }
 

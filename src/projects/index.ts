@@ -41,4 +41,9 @@ export {
 	type RefreshProjectCloneResult,
 	refreshProjectClone,
 } from "./refresh.ts";
-export { type ParsedGitHubUrl, parseGitHubUrl } from "./url.ts";
+export {
+	type ParsedGitHubUrl,
+	type ParsedRepoUrl,
+	parseGitHubUrl,
+	parseRepoUrl,
+} from "./url.ts";

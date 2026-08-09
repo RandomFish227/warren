@@ -34,6 +34,7 @@ describe("installGitCredentials", () => {
 		const result = await installGitCredentials({ run, logger }, { githubToken: undefined });
 
 		expect(result.installed).toBe(false);
+		expect(result.forgejoInstalled).toBe(false);
 		expect(calls).toHaveLength(0);
 		expect(logs[0]?.level).toBe("info");
 		expect(logs[0]?.msg).toContain("GITHUB_TOKEN unset");
@@ -50,6 +51,7 @@ describe("installGitCredentials", () => {
 		const result = await installGitCredentials({ run, logger }, { githubToken: "" });
 
 		expect(result.installed).toBe(false);
+		expect(result.forgejoInstalled).toBe(false);
 		expect(calls).toHaveLength(0);
 	});
 
@@ -64,6 +66,7 @@ describe("installGitCredentials", () => {
 		const result = await installGitCredentials({ run, logger }, { githubToken: "ghp_secret123" });
 
 		expect(result.installed).toBe(true);
+		expect(result.forgejoInstalled).toBe(false);
 		expect(calls).toEqual([
 			{
 				cmd: "git",
@@ -76,6 +79,55 @@ describe("installGitCredentials", () => {
 			},
 		]);
 		expect(logs.at(-1)?.msg).toContain("installed git insteadOf rule");
+	});
+
+	test("installs Forgejo insteadOf rule when both FORGEJO_TOKEN and WARREN_FORGEJO_HOST are set", async () => {
+		const { logger } = makeLogger();
+		const calls: { cmd: string; args: readonly string[] }[] = [];
+		const run: GitCredentialsRun = async (cmd, args) => {
+			calls.push({ cmd, args });
+			return { exitCode: 0, stdout: "", stderr: "" };
+		};
+
+		const result = await installGitCredentials(
+			{ run, logger },
+			{
+				githubToken: "ghp_github",
+				forgejoToken: "fj_secret",
+				forgejoHost: "codeberg.org",
+			},
+		);
+
+		expect(result.installed).toBe(true);
+		expect(result.forgejoInstalled).toBe(true);
+		expect(calls).toHaveLength(2);
+		expect(calls[1]).toEqual({
+			cmd: "git",
+			args: [
+				"config",
+				"--global",
+				"url.https://x-access-token:fj_secret@codeberg.org/.insteadOf",
+				"https://codeberg.org/",
+			],
+		});
+	});
+
+	test("skips Forgejo rule when FORGEJO_TOKEN is set but WARREN_FORGEJO_HOST is missing", async () => {
+		const { logger, logs } = makeLogger();
+		const calls: { cmd: string; args: readonly string[] }[] = [];
+		const run: GitCredentialsRun = async (cmd, args) => {
+			calls.push({ cmd, args });
+			return { exitCode: 0, stdout: "", stderr: "" };
+		};
+
+		const result = await installGitCredentials(
+			{ run, logger },
+			{ githubToken: "ghp_github", forgejoToken: "fj_secret" },
+		);
+
+		expect(result.forgejoInstalled).toBe(false);
+		expect(calls).toHaveLength(1); // only github
+		expect(logs.some((l) => l.msg?.includes("WARREN_FORGEJO_HOST unset"))).toBe(true);
 	});
 
 	test("respects the gitBinary override", async () => {

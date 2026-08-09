@@ -23,6 +23,7 @@
  * "cannot verify merge" (waiting) rather than "merged".
  */
 
+import { selectProviderToken } from "../git-providers/resolve.ts";
 import {
 	type CheckPrMergedResult,
 	checkPullRequestMerged,
@@ -33,6 +34,8 @@ export type PrMergeChecker = (prUrl: string) => Promise<CheckPrMergedResult>;
 
 export interface CreatePrMergeCheckerInput {
 	readonly token: string;
+	/** Forgejo API token (`FORGEJO_TOKEN`). Falls back to `token` when unset. */
+	readonly forgejoToken?: string;
 	readonly fetch?: typeof fetch;
 	/** Default 2 retries (3 total attempts). */
 	readonly maxRetries?: number;
@@ -52,6 +55,7 @@ export function createPrMergeChecker(input: CreatePrMergeCheckerInput): PrMergeC
 	const sleep = input.sleep ?? defaultSleep;
 	const maxRetries = input.maxRetries ?? DEFAULT_MAX_RETRIES;
 	const retryDelayMs = input.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+	const fetchArg = input.fetch !== undefined ? { fetch: input.fetch } : {};
 
 	return async function poll(prUrl: string): Promise<CheckPrMergedResult> {
 		const parsed = parsePullRequestUrl(prUrl);
@@ -63,14 +67,17 @@ export function createPrMergeChecker(input: CreatePrMergeCheckerInput): PrMergeC
 			};
 		}
 
+		const token = selectProviderToken(parsed.kind, input.token, input.forgejoToken); // warren-fg01
 		let last: CheckPrMergedResult | null = null;
 		for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
 			const result = await check({
 				owner: parsed.owner,
 				repo: parsed.repo,
 				number: parsed.number,
-				token: input.token,
-				...(input.fetch !== undefined ? { fetch: input.fetch } : {}),
+				token,
+				apiBase: parsed.apiBase,
+				kind: parsed.kind,
+				...fetchArg,
 			});
 			last = result;
 			if (!isTransient(result)) return result;

@@ -11,6 +11,11 @@ import { runGit, runGitOrThrow } from "./exec.ts";
  * importantly the git pre-commit hook, which exports GIT_DIR into the
  * environment and would otherwise make "outside a repo" assertions resolve to
  * the worktree's own .git.
+ *
+ * Also sets GIT_CEILING_DIRECTORIES to TMPDIR when TMPDIR lives inside the
+ * repo root (e.g. burrow sandbox environments where TMPDIR=/workspace/.burrow-tmp).
+ * Without this, git walks up from the temp dir and discovers the surrounding
+ * repo, making "outside a repo" assertions impossible.
  */
 export function cleanGitEnv(
 	extra: Record<string, string | undefined> = {},
@@ -18,6 +23,11 @@ export function cleanGitEnv(
 	const out: Record<string, string> = {};
 	for (const [k, v] of Object.entries(process.env)) {
 		if (v !== undefined && !k.startsWith("GIT_")) out[k] = v;
+	}
+	// Prevent git from traversing past TMPDIR into the enclosing repo.
+	const td = out.TMPDIR;
+	if (td && !("GIT_CEILING_DIRECTORIES" in extra)) {
+		out.GIT_CEILING_DIRECTORIES = td;
 	}
 	for (const [k, v] of Object.entries(extra)) {
 		if (v !== undefined) out[k] = v;

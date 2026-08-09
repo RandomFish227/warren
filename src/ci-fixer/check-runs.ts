@@ -25,6 +25,9 @@
  * fetch the job log or fall back to the details URL for third-party CI.
  */
 
+import type { GitProviderKind } from "../git-providers/resolve.ts";
+import { buildApiHeaders } from "../runs/pr-checks.ts";
+
 const GITHUB_API_BASE = "https://api.github.com";
 const USER_AGENT = "warren-ci-fixer";
 
@@ -52,6 +55,10 @@ export interface FetchCheckRunsInput {
 	readonly ref: string;
 	readonly token: string;
 	readonly fetch?: typeof fetch;
+	/** Forge API base URL. Defaults to `GITHUB_API_BASE`. (warren-fg01) */
+	readonly apiBase?: string;
+	/** Provider kind — controls request headers. Defaults to `"github"`. */
+	readonly kind?: GitProviderKind;
 }
 
 export type FetchCheckRunsResult =
@@ -63,17 +70,22 @@ export async function fetchCheckRuns(input: FetchCheckRunsInput): Promise<FetchC
 	if (input.token === "") {
 		return {
 			kind: "missing_token",
-			message: "GITHUB_TOKEN unset; cannot fetch check-runs",
+			message: "forge token unset; cannot fetch check-runs",
 		};
 	}
 
 	const fetchImpl = input.fetch ?? globalThis.fetch;
+	const apiBase = input.apiBase ?? GITHUB_API_BASE;
+	const kind = input.kind ?? "github";
 	const ref = encodeURIComponent(input.ref);
-	const url = `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/commits/${ref}/check-runs?per_page=100`;
+	const url = `${apiBase}/repos/${input.owner}/${input.repo}/commits/${ref}/check-runs?per_page=100`;
 
 	let res: Response;
 	try {
-		res = await fetchImpl(url, { method: "GET", headers: buildHeaders(input.token) });
+		res = await fetchImpl(url, {
+			method: "GET",
+			headers: buildApiHeaders(input.token, kind, USER_AGENT),
+		});
 	} catch (err) {
 		return {
 			kind: "http_error",
@@ -164,6 +176,10 @@ export interface FetchJobLogInput {
 	readonly jobId: number;
 	readonly token: string;
 	readonly fetch?: typeof fetch;
+	/** Forge API base URL. Defaults to `GITHUB_API_BASE`. (warren-fg01) */
+	readonly apiBase?: string;
+	/** Provider kind — controls request headers. Defaults to `"github"`. */
+	readonly kind?: GitProviderKind;
 }
 
 export type FetchJobLogTailFn = (
@@ -186,10 +202,15 @@ export async function fetchJobLogTail(
 ): Promise<string | null> {
 	if (input.token === "" || tailLines <= 0) return null;
 	const fetchImpl = input.fetch ?? globalThis.fetch;
-	const url = `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/actions/jobs/${input.jobId}/logs`;
+	const apiBase = input.apiBase ?? GITHUB_API_BASE;
+	const kind = input.kind ?? "github";
+	const url = `${apiBase}/repos/${input.owner}/${input.repo}/actions/jobs/${input.jobId}/logs`;
 	let res: Response;
 	try {
-		res = await fetchImpl(url, { method: "GET", headers: buildHeaders(input.token) });
+		res = await fetchImpl(url, {
+			method: "GET",
+			headers: buildApiHeaders(input.token, kind, USER_AGENT),
+		});
 	} catch {
 		return null;
 	}
@@ -205,15 +226,6 @@ function tailLog(text: string, tailLines: number): string | null {
 	const lines = trimmed.split("\n");
 	if (lines.length <= tailLines) return trimmed;
 	return lines.slice(lines.length - tailLines).join("\n");
-}
-
-function buildHeaders(token: string): Record<string, string> {
-	return {
-		accept: "application/vnd.github+json",
-		authorization: `Bearer ${token}`,
-		"user-agent": USER_AGENT,
-		"x-github-api-version": "2022-11-28",
-	};
 }
 
 async function readJson(res: Response): Promise<unknown> {

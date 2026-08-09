@@ -9,7 +9,7 @@ describe("checkPullRequestMerged", () => {
 		const { fetch, calls } = recordingFetch([]);
 		const result = await checkPullRequestMerged({ ...baseArgs, token: "", fetch });
 		expect(result.kind).toBe("missing_token");
-		expect((result as { message: string }).message).toContain("GITHUB_TOKEN unset");
+		expect((result as { message: string }).message).toContain("token unset");
 		expect(calls).toHaveLength(0);
 	});
 
@@ -96,28 +96,31 @@ describe("parsePullRequestUrl", () => {
 			owner: "jayminwest",
 			repo: "warren",
 			number: 42,
+			apiBase: "https://api.github.com",
+			kind: "github",
 		});
 	});
 
 	test("tolerates trailing slash, query, and fragment", () => {
-		expect(parsePullRequestUrl("https://github.com/o/r/pull/7/")).toEqual({
+		expect(parsePullRequestUrl("https://github.com/o/r/pull/7/")).toMatchObject({
+			owner: "o",
+			repo: "r",
+			number: 7,
+			kind: "github",
+		});
+		expect(parsePullRequestUrl("https://github.com/o/r/pull/7?diff=split")).toMatchObject({
 			owner: "o",
 			repo: "r",
 			number: 7,
 		});
-		expect(parsePullRequestUrl("https://github.com/o/r/pull/7?diff=split")).toEqual({
-			owner: "o",
-			repo: "r",
-			number: 7,
-		});
-		expect(parsePullRequestUrl("https://github.com/o/r/pull/7#discussion_r1")).toEqual({
+		expect(parsePullRequestUrl("https://github.com/o/r/pull/7#discussion_r1")).toMatchObject({
 			owner: "o",
 			repo: "r",
 			number: 7,
 		});
 	});
 
-	test("returns null for GHE-hosted shapes", () => {
+	test("returns null for GHE-hosted shapes (uses /pull/ singular, not /pulls/)", () => {
 		expect(parsePullRequestUrl("https://ghe.example.com/o/r/pull/42")).toBeNull();
 	});
 
@@ -128,5 +131,31 @@ describe("parsePullRequestUrl", () => {
 		expect(parsePullRequestUrl("http://github.com/o/r/pull/42")).toBeNull();
 		expect(parsePullRequestUrl("https://github.com/o/r/pull/abc")).toBeNull();
 		expect(parsePullRequestUrl("https://github.com/o/r/pull/0")).toBeNull();
+	});
+
+	test("parses a Forgejo PR URL (warren-fg01)", () => {
+		expect(parsePullRequestUrl("https://codeberg.org/owner/repo/pulls/7")).toEqual({
+			owner: "owner",
+			repo: "repo",
+			number: 7,
+			apiBase: "https://codeberg.org/api/v1",
+			kind: "forgejo",
+		});
+		expect(parsePullRequestUrl("https://forgejo.example.com/myorg/myrepo/pulls/42")).toMatchObject({
+			owner: "myorg",
+			repo: "myrepo",
+			number: 42,
+			kind: "forgejo",
+			apiBase: "https://forgejo.example.com/api/v1",
+		});
+	});
+
+	test("returns null for github.com /pulls/ (GitHub uses /pull/ singular)", () => {
+		expect(parsePullRequestUrl("https://github.com/o/r/pulls/7")).toBeNull();
+	});
+
+	test("returns null for Forgejo /pulls/ with zero or non-numeric number", () => {
+		expect(parsePullRequestUrl("https://codeberg.org/o/r/pulls/0")).toBeNull();
+		expect(parsePullRequestUrl("https://codeberg.org/o/r/pulls/abc")).toBeNull();
 	});
 });

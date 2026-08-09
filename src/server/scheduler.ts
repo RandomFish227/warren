@@ -79,6 +79,12 @@ export interface BootSchedulerInput {
 	 * the harness's own `insteadOf` rules are longer-prefix and win.
 	 */
 	readonly githubToken?: string;
+	/**
+	 * `FORGEJO_TOKEN` for CI-fixer passes and spawns against Forgejo-hosted
+	 * repos (warren-fg01). Optional; omitting it leaves Forgejo PRs without
+	 * check-run polling.
+	 */
+	readonly forgejoToken?: string;
 	/** Override the spawnRun seam (tests). Defaults to the live `spawnRun`. */
 	readonly spawnRunFn?: typeof spawnRun;
 	/**
@@ -207,6 +213,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		noticeGate: projectHealTracker,
 		ciFixer: {
 			githubToken: input.githubToken ?? "",
+			...(input.forgejoToken !== undefined ? { forgejoToken: input.forgejoToken } : {}),
 			spawn: ciFixerSpawn,
 			...(input.runBranchPrefixDefault !== undefined
 				? { runBranchPrefixDefault: input.runBranchPrefixDefault }

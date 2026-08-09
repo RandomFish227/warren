@@ -28,9 +28,15 @@ beforeAll(() => {
 			delete process.env[key];
 		}
 	}
+	// In burrow sandbox environments TMPDIR points inside the git repo
+	// (/workspace/.burrow-tmp). Set GIT_CEILING_DIRECTORIES so git stops
+	// looking for a repo above TMPDIR, allowing "outside-repo" assertions.
+	const td = process.env.TMPDIR;
+	if (td) process.env.GIT_CEILING_DIRECTORIES = td;
 });
 
 afterAll(() => {
+	delete process.env.GIT_CEILING_DIRECTORIES;
 	for (const [key, value] of Object.entries(savedGitEnv)) {
 		if (value !== undefined) process.env[key] = value;
 	}

@@ -11,6 +11,7 @@
  */
 
 import type { Repos } from "../../db/repos/index.ts";
+import { resolveGitProviderFromUrl, selectProviderToken } from "../../git-providers/resolve.ts";
 import {
 	bootPlanRunCoordinator,
 	type CoordinatorCloseChildSeedFn,
@@ -86,6 +87,8 @@ function createReopenPr(
 			});
 			const branch = composeRunBranch(prefix, runId);
 			const parsed = parseGitHubUrl(project.gitUrl);
+			const provider = resolveGitProviderFromUrl(project.gitUrl);
+			const prToken = selectProviderToken(provider.kind, autoOpenPr.token, autoOpenPr.forgejoToken);
 			const content = buildReopenPrContent(run, autoOpenPr);
 			const result = await openPullRequest({
 				owner: parsed.owner,
@@ -94,7 +97,9 @@ function createReopenPr(
 				base: project.defaultBranch,
 				title: content.title,
 				body: content.body,
-				token: autoOpenPr.token,
+				token: prToken,
+				apiBase: provider.apiBase,
+				kind: provider.kind,
 			});
 			if (result.ok) return result.url;
 			logger.warn(
@@ -203,7 +208,10 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 			const project = await repos.projects.require(projectId);
 			return showSeed(seedsCli, project.localPath, seedId);
 		},
-		checkPrMerged: createPrMergeChecker({ token: autoOpenPr.token }),
+		checkPrMerged: createPrMergeChecker({
+			token: autoOpenPr.token,
+			forgejoToken: autoOpenPr.forgejoToken,
+		}),
 		// warren-3806: deterministic host-side seed close when a child merges.
 		closeChildSeed: createCloseChildSeed({
 			env,

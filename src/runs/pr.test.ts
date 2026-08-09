@@ -81,7 +81,7 @@ describe("openPullRequest", () => {
 		expect(result).toEqual({
 			ok: false,
 			reason: "missing_token",
-			message: "GITHUB_TOKEN unset; cannot open pull request",
+			message: "forge token unset; cannot open pull request",
 		});
 		expect(calls).toHaveLength(0);
 	});

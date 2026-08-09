@@ -52,6 +52,8 @@ describe("parsePrUrl", () => {
 			owner: "owner",
 			repo: "repo",
 			number: 42,
+			apiBase: "https://api.github.com",
+			kind: "github",
 		});
 	});
 
@@ -60,6 +62,8 @@ describe("parsePrUrl", () => {
 			owner: "owner",
 			repo: "repo",
 			number: 99,
+			apiBase: "https://api.github.com",
+			kind: "github",
 		});
 	});
 

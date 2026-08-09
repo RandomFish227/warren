@@ -45,6 +45,8 @@ export type TickCiFixerSpawnFn = (input: TickCiFixerSpawnInput) => Promise<{ run
 export interface TickCiFixerDeps {
 	/** `GITHUB_TOKEN`; an empty value surfaces per-PR `error` results. */
 	readonly githubToken: string;
+	/** `FORGEJO_TOKEN`; used for CI-fixer passes on Forgejo PRs. (warren-fg01) */
+	readonly forgejoToken?: string;
 	readonly spawn: TickCiFixerSpawnFn;
 	/** `WARREN_RUN_BRANCH_PREFIX` fallback used to reconstruct PR head refs. */
 	readonly runBranchPrefixDefault?: string;
@@ -92,6 +94,7 @@ export async function runCiFixerPass(input: RunCiFixerPassInput): Promise<void> 
 		},
 		branchPrefix,
 		token: ciFixer.githubToken,
+		...(ciFixer.forgejoToken !== undefined ? { forgejoToken: ciFixer.forgejoToken } : {}),
 		...(ciFixer.fetch !== undefined ? { fetch: ciFixer.fetch } : {}),
 		history: (prUrl) => repos.runs.fixAttemptHistoryByPrUrl(prUrl),
 		spawn,

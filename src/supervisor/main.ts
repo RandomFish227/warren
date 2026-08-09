@@ -439,6 +439,8 @@ if (import.meta.main) {
 			{ run: defaultGitCredentialsRun, logger },
 			{
 				githubToken: process.env.GITHUB_TOKEN,
+				forgejoToken: process.env.FORGEJO_TOKEN,
+				forgejoHost: process.env.WARREN_FORGEJO_HOST,
 				gitBinary: process.env.WARREN_GIT_BINARY,
 			},
 		);
