@@ -13,6 +13,7 @@ import type {
 	CreatePlanRunResponse,
 	CreateRunInput,
 	ListRunsResponse,
+	OpenSeedsResponse,
 	PlanRunDetailResponse,
 	PlanRunRow,
 	PlanRunState,
@@ -202,6 +203,16 @@ export const projectsApi = {
 	 */
 	seedPlans: (id: string, signal?: AbortSignal) =>
 		request<SeedPlansResponse>(`/projects/${encodeURIComponent(id)}/seeds/plans`, {
+			...(signal ? { signal } : {}),
+		}),
+
+	/**
+	 * `GET /projects/:id/seeds` — the project's not-closed seeds. Populates
+	 * the NewRun form's `{seed_id}` picker so an operator chooses from the
+	 * real queue instead of recalling an id.
+	 */
+	openSeeds: (id: string, signal?: AbortSignal) =>
+		request<OpenSeedsResponse>(`/projects/${encodeURIComponent(id)}/seeds`, {
 			...(signal ? { signal } : {}),
 		}),
 

@@ -44,6 +44,7 @@ import {
 	listPlanRunsHandler,
 	streamPlanRunEventsHandler,
 } from "./plan-runs.ts";
+import { listProjectOpenSeedsHandler } from "./projects.open-seeds.ts";
 import {
 	createProjectHandler,
 	deleteProjectHandler,
@@ -243,6 +244,14 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		pattern: "/projects/:id/triggers",
 		policy: "readOperator",
 		build: getProjectTriggersHandler,
+	},
+	// Operator-only like its seeds siblings: seed titles are project content,
+	// not part of the spectator projection.
+	{
+		method: "GET",
+		pattern: "/projects/:id/seeds",
+		policy: "readOperator",
+		build: listProjectOpenSeedsHandler,
 	},
 	// Static path — must precede `/projects/:id/seeds/:seedId` so the param
 	// route doesn't swallow `plans` as a seed id.

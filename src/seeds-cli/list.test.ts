@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SpawnFn, SpawnResult } from "../projects/clone.ts";
 import { SeedsCliError } from "./errors.ts";
-import { listSeedStatuses } from "./list.ts";
+import { listOpenSeeds, listSeedStatuses } from "./list.ts";
 
 function ok(stdout: string): SpawnResult {
 	return { stdout, stderr: "", exitCode: 0 };
@@ -69,6 +69,52 @@ describe("listSeedStatuses", () => {
 	test("wraps a malformed envelope in SeedsCliError", async () => {
 		const spawn: SpawnFn = async () => ok(JSON.stringify({ issues: [{ id: "warren-x" }] }));
 		await expect(listSeedStatuses({ spawn, sdBinary: "sd" }, "/p")).rejects.toBeInstanceOf(
+			SeedsCliError,
+		);
+	});
+});
+
+describe("listOpenSeeds", () => {
+	const envelope = JSON.stringify({
+		success: true,
+		issues: [
+			{ id: "warren-open", status: "open", title: "An open one" },
+			{ id: "warren-wip", status: "in_progress", title: "Being worked" },
+			{ id: "warren-done", status: "closed", title: "Finished" },
+			{ id: "warren-bare", status: "open" },
+		],
+	});
+
+	test("keeps every seed that is not closed, in report order", async () => {
+		const spawn: SpawnFn = async () => ok(envelope);
+		const rows = await listOpenSeeds({ spawn, sdBinary: "sd" }, "/p");
+		expect(rows.map((r) => r.id)).toEqual(["warren-open", "warren-wip", "warren-bare"]);
+	});
+
+	test("keeps in_progress — a seed someone started is still dispatchable", async () => {
+		const spawn: SpawnFn = async () => ok(envelope);
+		const rows = await listOpenSeeds({ spawn, sdBinary: "sd" }, "/p");
+		expect(rows.some((r) => r.status === "in_progress")).toBe(true);
+		expect(rows.some((r) => r.status === "closed")).toBe(false);
+	});
+
+	test("surfaces the title so the picker can label its options", async () => {
+		const spawn: SpawnFn = async () => ok(envelope);
+		const rows = await listOpenSeeds({ spawn, sdBinary: "sd" }, "/p");
+		expect(rows[0]?.title).toBe("An open one");
+		expect(rows[2]?.title).toBeUndefined();
+	});
+
+	test("wraps a non-zero sd exit in SeedsCliError, like listSeedStatuses", async () => {
+		const spawn: SpawnFn = async () => fail("sd: not a seeds project");
+		await expect(listOpenSeeds({ spawn, sdBinary: "sd" }, "/p")).rejects.toBeInstanceOf(
+			SeedsCliError,
+		);
+	});
+
+	test("wraps non-JSON output in SeedsCliError", async () => {
+		const spawn: SpawnFn = async () => ok("not json");
+		await expect(listOpenSeeds({ spawn, sdBinary: "sd" }, "/p")).rejects.toBeInstanceOf(
 			SeedsCliError,
 		);
 	});

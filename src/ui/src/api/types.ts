@@ -579,6 +579,21 @@ export interface SeedPlansResponse {
 }
 
 /**
+ * A not-closed seed from `GET /projects/:id/seeds`. Feeds the NewRun form's
+ * `{seed_id}` picker; `title` is optional because `sd` does not guarantee
+ * one on every row.
+ */
+export interface OpenSeed {
+	id: string;
+	status: string;
+	title?: string;
+}
+
+export interface OpenSeedsResponse {
+	seeds: OpenSeed[];
+}
+
+/**
  * A plan surfaced by `GET /projects/:id/ready-plans` — approved, with at
  * least one open child seed, and not yet dispatched (warren-7937).
  */
