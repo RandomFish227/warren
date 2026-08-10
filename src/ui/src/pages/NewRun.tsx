@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { agentsApi, projectsApi, runsApi } from "@/api/client.ts";
 import type { CreateRunInput } from "@/api/types.ts";
+import { PromptTemplatePicker } from "@/components/prompt-template-picker.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Field } from "@/components/ui/field.tsx";
@@ -100,6 +101,7 @@ export function NewRunPage() {
 	});
 	const defaultRole = warrenConfig.data?.defaults?.defaultRole;
 	const defaultPrompt = warrenConfig.data?.defaults?.defaultPrompt;
+	const promptTemplates = warrenConfig.data?.defaults?.promptTemplates ?? [];
 	const defaultProvider = warrenConfig.data?.defaults?.defaultProvider;
 	const defaultModel = warrenConfig.data?.defaults?.defaultModel;
 	const configSourceFile = warrenConfig.data?.sourceFile ?? ".warren/config.yaml";
@@ -369,6 +371,20 @@ export function NewRunPage() {
 								) : null}
 							</div>
 						</div>
+
+						<PromptTemplatePicker
+							templates={promptTemplates}
+							onApply={(next, templateAgent) => {
+								setPrompt(next);
+								setPromptTouched(true);
+								// A template written for a specific agent selects it, but an
+								// explicit operator choice always wins.
+								if (templateAgent !== undefined && !agentTouched) {
+									setAgent(templateAgent);
+									setAgentTouched(true);
+								}
+							}}
+						/>
 
 						<div className="space-y-1.5">
 							<Label htmlFor="prompt">Prompt</Label>

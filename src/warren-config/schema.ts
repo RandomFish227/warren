@@ -222,6 +222,30 @@ const AgentConfigSchema = z
 
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 
+/**
+ * A named, reusable dispatch prompt the NewRun form offers as a starting
+ * point. Where `defaultPrompt` pre-fills the textarea with one fixed string,
+ * this is the plural form: a project ships the prompts that encode how work
+ * is meant to be scoped here, versioned in the repo and reviewed like any
+ * other file.
+ *
+ * `prompt` may carry `{placeholder}` tokens; see `renderPromptTemplate`
+ * (./prompt-templates.ts) for the substitution contract. Templates are a
+ * UI convenience only — nothing on the dispatch path reads them, so a
+ * malformed placeholder can never fail a run.
+ */
+const PromptTemplateSchema = z
+	.object({
+		name: z.string().min(1, "prompt template name must be non-empty"),
+		prompt: PromptSchema,
+		description: z.string().min(1).optional(),
+		/** Pre-select the agent this template is written for. */
+		agent: z.string().min(1).optional(),
+	})
+	.strict();
+
+export type PromptTemplate = z.infer<typeof PromptTemplateSchema>;
+
 // warren-b802: per-project override of the burrow runtime backing the
 // planner interactive built-in agent. Without this, an
 // operator must stand up a canopy library just to change the runtime
@@ -348,6 +372,10 @@ export const DefaultsConfigSchema = z
 		defaultRole: RoleNameSchema.optional(),
 		defaultBranch: z.string().min(1, "defaultBranch must be non-empty if provided").optional(),
 		defaultPrompt: PromptSchema.optional(),
+		// Named starting prompts offered by the NewRun form. Read only by the
+		// UI — the dispatch path never consults them, so a bad template is a
+		// cosmetic problem, not a failed run.
+		promptTemplates: z.array(PromptTemplateSchema).optional(),
 		// warren-618b: free-text provider/model defaults applied at spawn time the
 		// same way per-run overrides are (operator > project default > frontmatter).
 		defaultProvider: z.string().min(1, "defaultProvider must be non-empty if provided").optional(),

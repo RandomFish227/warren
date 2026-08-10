@@ -444,10 +444,29 @@ export interface CronTrigger {
 
 export type Trigger = CronTrigger;
 
+/**
+ * A named starting prompt the NewRun form offers. Mirrors
+ * `PromptTemplateSchema` in src/warren-config/schema.ts. `prompt` may carry
+ * `{placeholder}` tokens — see src/core/prompt-template.ts for the
+ * substitution contract the form applies.
+ */
+export interface PromptTemplate {
+	name: string;
+	prompt: string;
+	description?: string;
+	/** Pre-select the agent this template was written for. */
+	agent?: string;
+}
+
 export interface DefaultsConfig {
 	defaultRole?: string;
 	defaultBranch?: string;
 	defaultPrompt?: string;
+	/**
+	 * Named starting prompts for the NewRun form. UI-only: the dispatch path
+	 * never reads these, so a malformed template cannot fail a run.
+	 */
+	promptTemplates?: PromptTemplate[];
 	/**
 	 * warren-618b: per-project default provider/model. Applied at spawn time
 	 * with precedence operator override > project default > agent frontmatter.
