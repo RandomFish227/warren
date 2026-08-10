@@ -86,6 +86,9 @@ export const DOMAIN_STEMS = [
 	// the canonical home too — without this stem the guard would derive the
 	// name but never enforce it, recreating the warren-5334 blindness.
 	"envelope",
+	// Forge plan step 1: ForgeKind / FORGE_KINDS are wire vocabulary
+	// (carried on ProjectRow) and must be guarded like the rest.
+	"forge",
 ] as const;
 
 /**

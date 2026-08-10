@@ -38,6 +38,7 @@ import {
 import {
 	CLONE_KINDS,
 	EVENT_STREAMS,
+	FORGE_KINDS,
 	INBOX_PRIORITIES,
 	INBOX_STATES,
 	INDEX_NAMES,
@@ -90,6 +91,11 @@ export const projects = sqliteTable(
 		// projects without the issue queue. Defaults to false so legacy rows
 		// written before this column existed match the no-`.seeds/` shape.
 		hasSeeds: integer("has_seeds", { mode: "boolean" }).notNull().default(false),
+		// Forge provider declared by the operator at registration time (Forge
+		// plan step 2). Warren never auto-detects the forge — the declaration
+		// is stored and used to resolve the correct Forge implementation. Default
+		// 'github' backfills pre-Forge rows; every historical project was GitHub.
+		forgeKind: text("forge_kind", { enum: FORGE_KINDS }).notNull().default("github"),
 	},
 	(t) => [index(INDEX_NAMES.projectsGitUrl).on(t.gitUrl)],
 );

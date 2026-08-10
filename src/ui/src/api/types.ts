@@ -16,7 +16,10 @@
 export {
 	type AgentRow,
 	type AgentSource,
+	FORGE_KINDS,
+	type ForgeKind,
 	isActivePreviewState,
+	isForgeKind,
 	isTerminalPlanRunChildState,
 	isTerminalPlanRunState,
 	isTerminalRunState,
@@ -36,6 +39,7 @@ import type {
 	CloneKind,
 	ErrorEnvelope,
 	EventStream,
+	ForgeKind,
 	PlanRunChildState,
 	PlanRunState,
 	PreviewState,
@@ -66,6 +70,8 @@ export interface ProjectRow {
 	 * disables submission when this is false.
 	 */
 	hasSeeds: boolean;
+	/** Forge provider declared at registration time (Forge plan step 2). */
+	forgeKind: ForgeKind;
 }
 
 export interface RefreshProjectResponse {

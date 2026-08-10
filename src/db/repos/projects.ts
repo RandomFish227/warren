@@ -8,6 +8,7 @@
 import { asc, eq } from "drizzle-orm";
 import { NotFoundError } from "../../core/errors.ts";
 import { generateId } from "../../core/ids.ts";
+import type { ForgeKind } from "../../core/wire.ts";
 import type { SqliteDrizzleDb } from "../client.ts";
 import type { ProjectRow } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
@@ -22,7 +23,15 @@ export interface CreateProjectInput {
 	 * when omitted; the column is NOT NULL.
 	 */
 	hasSeeds?: boolean;
+	/** Forge provider declared by the operator (Forge plan step 2). Defaults to "github". */
+	forgeKind?: ForgeKind;
 	now?: Date;
+}
+
+export interface PatchProjectInput {
+	id: string;
+	/** Update the forge provider declaration (Forge plan step 2). */
+	forgeKind: ForgeKind;
 }
 
 export interface RecordRefreshInput {
@@ -57,9 +66,20 @@ export class ProjectsRepo {
 			lastFetchedAt: null,
 			lastHeadSha: null,
 			hasSeeds: input.hasSeeds ?? false,
+			forgeKind: input.forgeKind ?? "github",
 		};
 		await this.adapter.runWrite(this.db.insert(this.projects).values(row));
 		return row;
+	}
+
+	async patch(input: PatchProjectInput): Promise<ProjectRow> {
+		await this.adapter.runWrite(
+			this.db
+				.update(this.projects)
+				.set({ forgeKind: input.forgeKind })
+				.where(eq(this.projects.id, input.id)),
+		);
+		return this.require(input.id);
 	}
 
 	async recordRefresh(input: RecordRefreshInput): Promise<ProjectRow> {

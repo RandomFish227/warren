@@ -14,86 +14,30 @@
  * the resulting on-disk path can't escape the projects root or shadow a
  * dotfile.
  *
- * Non-GitHub URLs (gitlab, self-hosted, file://) are rejected up-front:
- * V1 scope is "paste a GitHub URL" (ACCEPTANCE.md), and accepting other hosts
- * silently would let bad inputs flow into `git clone`.
+ * Forge plan: `parseGitHubUrl` remains here for backward compatibility.
+ * The host-agnostic `parseRepoUrl` in `src/forge/url.ts` is the canonical
+ * parser for multi-forge workloads; this function delegates to it and then
+ * asserts the host is `github.com` so V1 callers retain their host guard.
  */
 
 import { ValidationError } from "../core/errors.ts";
+import { parseRepoUrl } from "../forge/url.ts";
 
 export interface ParsedGitHubUrl {
 	readonly owner: string;
 	readonly name: string;
 }
 
-const SEGMENT = /^[A-Za-z0-9._-]+$/;
+/** Known public GitHub hosts (covers github.com; GHE detection is declaration-side). */
+const GITHUB_HOSTS: ReadonlySet<string> = new Set(["github.com"]);
 
 export function parseGitHubUrl(input: string): ParsedGitHubUrl {
-	const trimmed = input.trim();
-	if (trimmed === "") {
-		throw new ValidationError("gitUrl is empty", {
-			recoveryHint: "pass a GitHub URL, e.g. https://github.com/owner/name",
-		});
-	}
-
-	const segments = extractOwnerName(trimmed);
-	if (segments === undefined) {
-		throw new ValidationError(`unrecognized GitHub URL: ${trimmed}`, {
+	const ref = parseRepoUrl(input);
+	if (!GITHUB_HOSTS.has(ref.host)) {
+		throw new ValidationError(`unrecognized GitHub URL: ${input.trim()}`, {
 			recoveryHint:
 				"use https://github.com/<owner>/<name>[.git] or git@github.com:<owner>/<name>[.git]",
 		});
 	}
-
-	const owner = stripGitSuffix(segments.owner);
-	const name = stripGitSuffix(segments.name);
-	validateSegment(owner, "owner");
-	validateSegment(name, "name");
-	return { owner, name };
-}
-
-function extractOwnerName(url: string): { owner: string; name: string } | undefined {
-	// scp-style: git@github.com:owner/name(.git)?
-	const scp = /^git@github\.com:([^/]+)\/(.+?)\/?$/.exec(url);
-	if (scp !== null) {
-		return { owner: scp[1] as string, name: scp[2] as string };
-	}
-
-	// https or ssh (URL-parseable)
-	let parsed: URL;
-	try {
-		parsed = new URL(url);
-	} catch {
-		return undefined;
-	}
-	const host = parsed.hostname.toLowerCase();
-	const protocol = parsed.protocol;
-	if (host !== "github.com") return undefined;
-	if (protocol !== "https:" && protocol !== "http:" && protocol !== "ssh:") {
-		return undefined;
-	}
-	const parts = parsed.pathname.split("/").filter((p) => p !== "");
-	if (parts.length < 2) return undefined;
-	return { owner: parts[0] as string, name: parts.slice(1).join("/") };
-}
-
-function stripGitSuffix(segment: string): string {
-	return segment.endsWith(".git") ? segment.slice(0, -4) : segment;
-}
-
-function validateSegment(segment: string, label: string): void {
-	if (segment === "" || segment === "." || segment === "..") {
-		throw new ValidationError(`invalid ${label} in GitHub URL: ${JSON.stringify(segment)}`, {
-			recoveryHint: "owner and repo name must be non-empty path segments",
-		});
-	}
-	if (segment.startsWith("-")) {
-		throw new ValidationError(`invalid ${label} in GitHub URL: ${JSON.stringify(segment)}`, {
-			recoveryHint: "owner and repo name must not start with a dash",
-		});
-	}
-	if (!SEGMENT.test(segment)) {
-		throw new ValidationError(`invalid ${label} in GitHub URL: ${JSON.stringify(segment)}`, {
-			recoveryHint: "owner and repo name may only contain letters, digits, '.', '_', '-'",
-		});
-	}
+	return { owner: ref.owner, name: ref.name };
 }

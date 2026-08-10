@@ -31,9 +31,10 @@
 import { existsSync } from "node:fs";
 import { formatError } from "../core/errors.ts";
 import type { ProjectRow } from "../db/schema.ts";
+import { forgeFor } from "../forge/registry.ts";
+import { parseRepoUrl } from "../forge/url.ts";
 import { cloneProjectRepo, type SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
-import { parseGitHubUrl } from "../projects/url.ts";
 
 /** Default gap between repeated notices for the same unresolved condition. */
 export const NOTICE_INTERVAL_MS = 3_600_000;
@@ -118,7 +119,8 @@ export interface RecloneMissingProjectInput {
  * clone failure — the caller decides whether to back off.
  */
 export async function recloneMissingProject(input: RecloneMissingProjectInput): Promise<void> {
-	const parsed = parseGitHubUrl(input.project.gitUrl);
+	const parsed = parseRepoUrl(input.project.gitUrl);
+	const credentialEnv = forgeFor(input.project).buildGitCredentialEnv(input.token ?? "");
 	const cloneFn = input.clone ?? cloneProjectRepo;
 	await cloneFn({
 		config: input.config,
@@ -126,7 +128,7 @@ export async function recloneMissingProject(input: RecloneMissingProjectInput): 
 		owner: parsed.owner,
 		name: parsed.name,
 		defaultBranch: input.project.defaultBranch,
-		token: input.token,
+		credentialEnv,
 		spawn: input.spawn,
 		...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
 	});

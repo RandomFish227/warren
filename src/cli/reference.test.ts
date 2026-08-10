@@ -67,7 +67,7 @@ describe("collectCommandReference", () => {
 		]);
 		const addProject = byName(collectCommandReference(testProgram()), "add-project");
 		expect(addProject.arguments[0]?.name).toBe("git-url");
-		expect(addProject.arguments[0]?.description).toContain("GitHub");
+		expect(addProject.arguments[0]?.description).toContain("git URL");
 	});
 
 	test("distinguishes mandatory options from defaulted ones", () => {

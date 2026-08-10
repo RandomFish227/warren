@@ -85,7 +85,9 @@ describe("git worktree helpers", () => {
 	});
 
 	test("discoverHostClone returns null outside a git repo", async () => {
-		const outside = mkdtempSync(join(tmpdir(), "warren-non-git-"));
+		// Use /tmp (not os.tmpdir()) — in burrow, tmpdir() is /workspace/.burrow-tmp
+		// which is inside the git worktree, so git finds the repo instead of null.
+		const outside = mkdtempSync(join("/tmp", "warren-non-git-"));
 		try {
 			const result = await discoverHostClone(outside);
 			expect(result).toBeNull();

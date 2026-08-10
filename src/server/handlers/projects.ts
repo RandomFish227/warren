@@ -6,6 +6,7 @@
  */
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
+import { FORGE_KINDS, isForgeKind } from "../../core/wire.ts";
 import type { ProjectRow } from "../../db/schema.ts";
 import { ProjectLacksSeedsError } from "../../plan-runs/errors.ts";
 import { computeReadyPlans, type ReadyPlanInput } from "../../plan-runs/index.ts";
@@ -54,6 +55,7 @@ export const PUBLIC_PROJECT_FIELDS = [
 	"lastFetchedAt",
 	"lastHeadSha",
 	"hasSeeds",
+	"forgeKind",
 ] as const satisfies readonly (keyof ProjectRow)[];
 
 /**
@@ -64,6 +66,9 @@ export const PUBLIC_PROJECT_FIELDS = [
  *
  * - `localPath` — an absolute server filesystem path under the projects
  *   root. Pure host-layout disclosure; a spectator has no use for it.
+ *
+ * `forgeKind` is public: it names the git host technology, not any secret.
+ * Operators can see which forge a project is on from the git URL anyway.
  */
 export const REDACTED_PROJECT_FIELDS = [
 	"localPath",
@@ -108,6 +113,13 @@ export function createProjectHandler(deps: ServerDeps): RouteHandler {
 		const body = await readJsonBody(ctx);
 		const gitUrl = requireString(body, "gitUrl");
 		const defaultBranch = optionalString(body, "defaultBranch");
+		const rawForgeKind = optionalString(body, "forgeKind");
+		if (rawForgeKind !== undefined && !isForgeKind(rawForgeKind)) {
+			throw new ValidationError(
+				`forgeKind ${JSON.stringify(rawForgeKind)} is not valid; accepted: ${FORGE_KINDS.join(", ")}`,
+				{ recoveryHint: `pass one of: ${FORGE_KINDS.join(", ")}` },
+			);
+		}
 		// warren-ce9b/0883: the public-instance allowlist is enforced inside
 		// `addProject` — the single site the CLI shares — so this handler
 		// only forwards it. No-op under `WARREN_AUTH=token`
@@ -118,11 +130,41 @@ export function createProjectHandler(deps: ServerDeps): RouteHandler {
 			gitUrl,
 			...(deps.publicAllowlist !== undefined ? { publicAllowlist: deps.publicAllowlist } : {}),
 			...(defaultBranch !== undefined ? { defaultBranch } : {}),
+			...(rawForgeKind !== undefined ? { forgeKind: rawForgeKind } : {}),
 			// Private-repo credential for the host-side clone (AutoOpenPrConfig.gitToken).
 			token: deps.autoOpenPr?.gitToken,
 			spawn: defaultSpawn,
 		});
 		return jsonResponse(201, project);
+	};
+}
+
+/**
+ * `PATCH /projects/:id` — update mutable project fields (Forge plan step 2).
+ *
+ * Currently accepts only `forgeKind` so an operator can correct a wrong forge
+ * declaration without deleting and re-adding the project (which would destroy
+ * run history). The route is `admin`-gated to match `POST /projects`.
+ */
+export function patchProjectHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const id = requireParam(ctx, "id");
+		const body = await readJsonBody(ctx);
+		const rawForgeKind = optionalString(body, "forgeKind");
+		if (rawForgeKind === undefined) {
+			throw new ValidationError("PATCH /projects/:id requires at least one patchable field", {
+				recoveryHint: "pass { forgeKind: <value> } to update the forge provider",
+			});
+		}
+		if (!isForgeKind(rawForgeKind)) {
+			throw new ValidationError(
+				`forgeKind ${JSON.stringify(rawForgeKind)} is not valid; accepted: ${FORGE_KINDS.join(", ")}`,
+				{ recoveryHint: `pass one of: ${FORGE_KINDS.join(", ")}` },
+			);
+		}
+		await deps.repos.projects.require(id);
+		const updated = await deps.repos.projects.patch({ id, forgeKind: rawForgeKind });
+		return jsonResponse(200, updated);
 	};
 }
 

@@ -38,6 +38,7 @@ import {
 import {
 	CLONE_KINDS,
 	EVENT_STREAMS,
+	FORGE_KINDS,
 	INBOX_PRIORITIES,
 	INBOX_STATES,
 	INDEX_NAMES,
@@ -75,6 +76,8 @@ export const projects = pgTable(
 		// Seeds opt-in gating flag (warren-9990 / pl-a258 step 1) — mirror of
 		// sqlite. See sqlite.ts for shape.
 		hasSeeds: boolean("has_seeds").notNull().default(false),
+		// Forge provider — mirror of sqlite. See sqlite.ts for shape.
+		forgeKind: text("forge_kind", { enum: FORGE_KINDS }).notNull().default("github"),
 	},
 	(t) => [index(INDEX_NAMES.projectsGitUrl).on(t.gitUrl)],
 );

@@ -248,6 +248,22 @@ paths:
           required: true
           schema:
             type: string
+    patch:
+      operationId: patchProjectHandler
+      tags:
+        - projects
+      summary: PATCH /projects/:id
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
     delete:
       operationId: deleteProjectHandler
       tags:

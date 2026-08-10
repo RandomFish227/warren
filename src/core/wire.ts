@@ -11,18 +11,8 @@
  * redeclare one. `bun run check:wire-types` (warren-d371) enforces that
  * mechanically.
  *
- * Why `src/core/` and why this direction:
- *
- *   - `src/core/` is warren's dependency-free kernel (errors + ids). It
- *     imports nothing, so every layer can import it without inheriting a
- *     dependency. The UI is a separate Vite-bundled package that must never
- *     reach into `src/db/schema/` (drizzle + `bun:sqlite` in a browser
- *     bundle); a leaf module with zero imports is reachable from both sides.
- *   - The three surfaces drifted for exactly as long as they were hand-kept
- *     copies: `RunFailureReason` lost `finalize_failed` + `evicted` in both
- *     the SDK and the UI, the UI still typed the deleted `interactive` run
- *     mode, and `RefreshAgentsResponse.removed` was `{name}[]` in the UI
- *     against a server truth of `string[]`.
+ * Why `src/core/`: zero-import kernel every layer can reach without inheriting
+ * drizzle or `bun:sqlite` into the Vite-bundled UI.
  *
  * Container-shape convention: every set is a frozen `as const` tuple
  * narrowed by `satisfies readonly <Union>[]`, so the tuple and the union it
@@ -495,6 +485,15 @@ export function isTerminalPlanRunChildState(
 	state: PlanRunChildState,
 ): state is PlanRunChildTerminalState {
 	return (PLAN_RUN_CHILD_TERMINAL_STATES as readonly PlanRunChildState[]).includes(state);
+}
+
+/** Git-hosting provider declared per project (Forge plan). Operator-declared; never auto-detected. */
+export const FORGE_KINDS = ["github", "gitlab", "gitea", "forgejo"] as const;
+export type ForgeKind = (typeof FORGE_KINDS)[number];
+
+/** Membership predicate for {@link FORGE_KINDS}. */
+export function isForgeKind(value: unknown): value is ForgeKind {
+	return typeof value === "string" && (FORGE_KINDS as readonly string[]).includes(value);
 }
 
 /* ----------------------------------------------------------------------- */

@@ -97,20 +97,26 @@ export function buildProgram(baseContext: CliContext): Command {
 		program
 			.command("add-project")
 			.description("register a project on the warren server (POST /projects)")
-			.argument("<git-url>", "GitHub URL (https or git@)")
-			.option("--default-branch <name>", "override the auto-detected default branch"),
-	).action(async (gitUrl: string, opts: { defaultBranch?: string } & RemoteOpts) => {
-		const client = resolveWarrenClient(context.env, clientFlags(opts));
-		const result = await runAddProject(
-			context,
-			{ client },
-			{
-				gitUrl,
-				...(opts.defaultBranch !== undefined ? { defaultBranch: opts.defaultBranch } : {}),
-			},
-		);
-		process.exit(result.exitCode);
-	});
+			.argument("<git-url>", "git URL (https or git@) for the project repo")
+			.option("--default-branch <name>", "override the auto-detected default branch")
+			.option("--forge <kind>", "forge provider: github, gitlab, gitea, forgejo (default: github)"),
+	).action(
+		async (gitUrl: string, opts: { defaultBranch?: string; forge?: string } & RemoteOpts) => {
+			const client = resolveWarrenClient(context.env, clientFlags(opts));
+			const result = await runAddProject(
+				context,
+				{ client },
+				{
+					gitUrl,
+					...(opts.defaultBranch !== undefined ? { defaultBranch: opts.defaultBranch } : {}),
+					...(opts.forge !== undefined
+						? { forgeKind: opts.forge as import("../core/wire.ts").ForgeKind }
+						: {}),
+				},
+			);
+			process.exit(result.exitCode);
+		},
+	);
 
 	addClientFlags(
 		program

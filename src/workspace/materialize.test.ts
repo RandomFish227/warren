@@ -160,7 +160,8 @@ describe("materializeProjectWorkspace", () => {
 	});
 
 	test("falls back to git clone when no host clone is detected", async () => {
-		const outside = mkdtempSync(join(tmpdir(), "warren-outside-"));
+		// Use /tmp — os.tmpdir() in burrow is inside the git worktree.
+		const outside = mkdtempSync(join("/tmp", "warren-outside-"));
 		try {
 			const ws = join(outside, "ws");
 			const result = await materializeProjectWorkspace({
@@ -314,7 +315,7 @@ describe("removeMaterializedWorkspace", () => {
 	});
 
 	test("removes a clone-backed workspace by deleting the directory tree", async () => {
-		const outside = mkdtempSync(join(tmpdir(), "warren-rm-outside-"));
+		const outside = mkdtempSync(join("/tmp", "warren-rm-outside-"));
 		try {
 			const ws = join(outside, "ws");
 			const result = await materializeProjectWorkspace({

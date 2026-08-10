@@ -12,6 +12,7 @@ import type {
 	CloneKind,
 	ErrorEnvelope,
 	EventStream,
+	ForgeKind,
 	InboxPriority,
 	InboxState,
 	PreviewState,
@@ -25,7 +26,10 @@ export {
 	type AgentSource,
 	type CloneKind,
 	type EventStream,
+	FORGE_KINDS,
+	type ForgeKind,
 	type InboxState,
+	isForgeKind,
 	isTerminalRunState,
 	type PreviewState,
 	RUN_TERMINAL_STATES,
@@ -67,6 +71,8 @@ export interface ProjectRow {
 	lastFetchedAt: string | null;
 	lastHeadSha: string | null;
 	hasSeeds: boolean;
+	/** Forge provider declared at registration time (Forge plan step 2). */
+	forgeKind: ForgeKind;
 }
 
 export interface RunRow {
@@ -207,6 +213,14 @@ export interface ListProjectsResponse {
 export interface CreateProjectInput {
 	gitUrl: string;
 	defaultBranch?: string;
+	/** Forge provider declaration (Forge plan step 2). Defaults to "github" on the server. */
+	forgeKind?: ForgeKind;
+}
+
+/** Body for `PATCH /projects/:id` (Forge plan step 2). */
+export interface PatchProjectInput {
+	/** Update the forge provider declaration. */
+	forgeKind: ForgeKind;
 }
 
 /** A plan from `GET /projects/:id/ready-plans` — approved, undispatched, ≥1 open child (warren-7937). */

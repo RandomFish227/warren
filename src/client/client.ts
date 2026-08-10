@@ -22,6 +22,7 @@ import {
 	type ListProjectsResponse,
 	type ListReadyPlansResponse,
 	type ListRunsResponse,
+	type PatchProjectInput,
 	type PlanRunDetailResponse,
 	type PlanRunRow,
 	type ProjectRow,
@@ -166,6 +167,15 @@ export class WarrenClient {
 	async createProject(input: CreateProjectInput): Promise<ProjectRow> {
 		return this.request<ProjectRow>("/projects", {
 			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(input),
+		});
+	}
+
+	/** `PATCH /projects/:id` — update mutable project fields (Forge plan step 2). */
+	async patchProject(projectId: string, input: PatchProjectInput): Promise<ProjectRow> {
+		return this.request<ProjectRow>(`/projects/${encodeURIComponent(projectId)}`, {
+			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify(input),
 		});

@@ -54,6 +54,7 @@ import {
 	listProjectSeedPlansHandler,
 	listProjectsHandler,
 	listReadyPlansHandler,
+	patchProjectHandler,
 	refreshProjectHandler,
 	runProjectTriggerHandler,
 } from "./projects.ts";
@@ -232,6 +233,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/projects", policy: "readPublic", build: listProjectsHandler },
 	{ method: "POST", pattern: "/projects", policy: "admin", build: createProjectHandler },
 	{ method: "GET", pattern: "/projects/:id", policy: "readPublic", build: getProjectHandler },
+	{ method: "PATCH", pattern: "/projects/:id", policy: "admin", build: patchProjectHandler },
 	{
 		method: "GET",
 		pattern: "/projects/:id/warren-config",

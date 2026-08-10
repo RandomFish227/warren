@@ -11,6 +11,10 @@
           "description": "override the auto-detected default branch"
         },
         {
+          "flags": "--forge <kind>",
+          "description": "forge provider: github, gitlab, gitea, forgejo (default: github)"
+        },
+        {
           "flags": "--url <url>",
           "description": "warren server base URL (env WARREN_BASE_URL)"
         },

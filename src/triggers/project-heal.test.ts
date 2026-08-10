@@ -21,6 +21,7 @@ function makeProject(overrides: Partial<ProjectRow> = {}): ProjectRow {
 		lastFetchedAt: null,
 		lastHeadSha: null,
 		hasSeeds: false,
+		forgeKind: "github",
 		...overrides,
 	};
 }
@@ -80,7 +81,7 @@ describe("ProjectHealTracker", () => {
 });
 
 describe("recloneMissingProject", () => {
-	test("derives owner/name from gitUrl and pins the stored defaultBranch + token", async () => {
+	test("derives owner/name from gitUrl and pins the stored defaultBranch + credentialEnv", async () => {
 		const calls: Record<string, unknown>[] = [];
 		await recloneMissingProject({
 			project: makeProject({
@@ -101,7 +102,11 @@ describe("recloneMissingProject", () => {
 			name: "widget",
 			gitUrl: "https://github.com/acme/widget.git",
 			defaultBranch: "trunk",
-			token: "ghs_secret",
+			credentialEnv: {
+				GIT_CONFIG_COUNT: "1",
+				GIT_CONFIG_KEY_0: "url.https://x-access-token:ghs_secret@github.com/.insteadOf",
+				GIT_CONFIG_VALUE_0: "https://github.com/",
+			},
 		});
 	});
 });

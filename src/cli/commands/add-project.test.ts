@@ -34,6 +34,7 @@ function projectRow(over: Partial<ProjectRow> = {}): ProjectRow {
 		lastFetchedAt: null,
 		lastHeadSha: null,
 		hasSeeds: false,
+		forgeKind: "github",
 		...over,
 	};
 }

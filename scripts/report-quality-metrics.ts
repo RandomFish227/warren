@@ -106,7 +106,14 @@ export interface ComplexityOverrides {
  * each file appears in at most one override block per rule.
  */
 export function countComplexityOverrides(biomeJson: string): ComplexityOverrides {
-	const parsed = Bun.JSONC.parse(biomeJson) as {
+	// Bun.JSONC was added after v1.2.23; strip comments and trailing commas
+	// manually so older Bun versions don't crash. Not a full JSONC parser but
+	// sufficient for the well-structured biome.jsonc file.
+	const stripped = biomeJson
+		.replace(/\/\*[\s\S]*?\*\//g, "")
+		.replace(/\/\/[^\n]*/g, "")
+		.replace(/,(\s*[}\]])/g, "$1");
+	const parsed = JSON.parse(stripped) as {
 		overrides?: Array<{
 			includes?: string[];
 			linter?: { rules?: { complexity?: Record<string, unknown> } };

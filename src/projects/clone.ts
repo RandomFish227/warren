@@ -121,13 +121,17 @@ export interface CloneProjectInput {
 	/** Override default-branch detection. */
 	readonly defaultBranch?: string;
 	/**
-	 * GitHub token for private-repo access (`GITHUB_TOKEN` at the HTTP
-	 * boundary). Applied as a process-scoped `insteadOf` rewrite via
-	 * `githubCredentialGitEnv` on the network-touching git spawns (clone,
-	 * `remote set-head`) — never in argv, never persisted to the clone's
-	 * config. Absent/empty → anonymous clone, exactly the old behavior.
-	 * The supervisor's global rule covers the local topology; this covers
-	 * `warren serve` running bare (K8s pod), where no global rule exists.
+	 * Pre-computed git credential env from `forge.buildGitCredentialEnv(token)`.
+	 * When provided, passed verbatim to network-touching git spawns (clone,
+	 * `remote set-head`) — the forge decides the encoding. Takes precedence
+	 * over `token` below. Returns `{}` for empty/absent tokens (anonymous
+	 * clone, unchanged behavior).
+	 */
+	readonly credentialEnv?: Record<string, string>;
+	/**
+	 * Raw token — kept for callers that have not migrated to `credentialEnv`.
+	 * Forwarded to `githubCredentialGitEnv` when `credentialEnv` is absent.
+	 * @deprecated Pass `credentialEnv` from `forge.buildGitCredentialEnv(token)`.
 	 */
 	readonly token?: string;
 	readonly spawn: SpawnFn;
@@ -160,9 +164,8 @@ export async function cloneProjectRepo(input: CloneProjectInput): Promise<CloneP
 
 	await ensureParentDir(mkdirp, dirname(localPath));
 
-	// No token → no `env` key at all, so anonymous public-repo clones spawn
-	// exactly as before (plain inheritance, nothing for tests to see).
-	const credEnv = githubCredentialGitEnv(input.token);
+	// Prefer forge-computed credentialEnv; fall back to the legacy token path.
+	const credEnv = input.credentialEnv ?? githubCredentialGitEnv(input.token);
 	const netEnv = Object.keys(credEnv).length > 0 ? { env: credEnv } : {};
 
 	const cloneCmd = [config.gitBinary, "clone", gitUrl, localPath];

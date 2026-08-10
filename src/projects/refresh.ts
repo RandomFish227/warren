@@ -50,11 +50,13 @@ export interface RefreshProjectCloneInput {
 	/** Branch, tag, or SHA. Defaults to the project's tracked default branch. */
 	readonly ref: string;
 	/**
-	 * GitHub token for private-repo access (`GITHUB_TOKEN` at the HTTP
-	 * boundary). Applied to the `git fetch` spawn as a process-scoped
-	 * `insteadOf` rewrite (`githubCredentialGitEnv`) so a bare `warren
-	 * serve` (K8s pod, no supervisor-installed global rule) can refresh a
-	 * private clone. Absent/empty → anonymous fetch, the old behavior.
+	 * Pre-computed git credential env from `forge.buildGitCredentialEnv(token)`.
+	 * Passed verbatim to the `git fetch` spawn. Takes precedence over `token`.
+	 */
+	readonly credentialEnv?: Record<string, string>;
+	/**
+	 * Raw token — kept for callers that have not migrated to `credentialEnv`.
+	 * @deprecated Pass `credentialEnv` from `forge.buildGitCredentialEnv(token)`.
 	 */
 	readonly token?: string;
 	readonly spawn: SpawnFn;
@@ -108,8 +110,8 @@ export async function refreshProjectClone(
 		});
 	}
 
-	// No token → no `env` key, plain inheritance (see CloneProjectInput.token).
-	const credEnv = githubCredentialGitEnv(input.token);
+	// Prefer forge-computed credentialEnv; fall back to the legacy token path.
+	const credEnv = input.credentialEnv ?? githubCredentialGitEnv(input.token);
 	const netEnv = Object.keys(credEnv).length > 0 ? { env: credEnv } : {};
 
 	await runGit(spawn, [config.gitBinary, "fetch", "--prune", "origin"], {

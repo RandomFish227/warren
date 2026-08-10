@@ -8,10 +8,12 @@
  * and persists the row. The CLI no longer opens a local SQLite handle
  * or re-implements any of that — it probes, POSTs, and prints the
  * created project row as NDJSON. Maps `--default-branch` to the optional
- * override the route accepts.
+ * override the route accepts, and `--forge` to the forge provider
+ * declaration (Forge plan step 2).
  */
 
 import type { WarrenClient } from "../../client/index.ts";
+import type { ForgeKind } from "../../core/wire.ts";
 import type { CliContext } from "../output.ts";
 import {
 	EXIT_SERVER_UNREACHABLE,
@@ -25,6 +27,8 @@ import { probeOrReport } from "./probe.ts";
 export interface AddProjectArgs {
 	readonly gitUrl: string;
 	readonly defaultBranch?: string;
+	/** Forge provider declaration (Forge plan step 2). Defaults to "github". */
+	readonly forgeKind?: ForgeKind;
 }
 
 export interface AddProjectDeps {
@@ -58,6 +62,7 @@ export async function runAddProject(
 			...(args.defaultBranch !== undefined && args.defaultBranch !== ""
 				? { defaultBranch: args.defaultBranch }
 				: {}),
+			...(args.forgeKind !== undefined ? { forgeKind: args.forgeKind } : {}),
 		});
 		writeResult(
 			context,

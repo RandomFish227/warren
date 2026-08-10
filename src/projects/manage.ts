@@ -33,8 +33,10 @@ import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { formatError, ValidationError } from "../core/errors.ts";
+import type { ForgeKind } from "../core/wire.ts";
 import type { ProjectsRepo } from "../db/repos/projects.ts";
 import type { ProjectRow } from "../db/schema.ts";
+import { forgeFor } from "../forge/registry.ts";
 import type { BridgeLogger } from "../runs/stream/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import {
@@ -58,6 +60,12 @@ export interface AddProjectInput {
 	readonly config: ProjectsConfig;
 	readonly gitUrl: string;
 	readonly defaultBranch?: string;
+	/**
+	 * Git-hosting forge declared by the operator (Forge plan step 2).
+	 * Warren never infers this from the URL — it is stored as declared.
+	 * Defaults to `"github"` when omitted so existing callers are unaffected.
+	 */
+	readonly forgeKind?: ForgeKind;
 	/**
 	 * GitHub token for private-repo clones (`GITHUB_TOKEN`), forwarded to
 	 * `cloneProjectRepo` — see `CloneProjectInput.token`. Absent/empty →
@@ -99,6 +107,8 @@ export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
 		});
 	}
 
+	const forgeKind = input.forgeKind ?? "github";
+	const credentialEnv = forgeFor({ forgeKind, gitUrl }).buildGitCredentialEnv(input.token ?? "");
 	const cloneFn = input.clone ?? cloneProjectRepo;
 	const clone: CloneProjectResult = await cloneFn({
 		config,
@@ -106,7 +116,7 @@ export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
 		owner: parsed.owner,
 		name: parsed.name,
 		defaultBranch: input.defaultBranch,
-		token: input.token,
+		credentialEnv,
 		spawn: input.spawn,
 		timeoutMs: input.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS,
 	});
@@ -119,6 +129,7 @@ export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
 		localPath: clone.localPath,
 		defaultBranch: clone.defaultBranch,
 		hasSeeds: features.hasSeeds,
+		forgeKind,
 		now: input.now?.(),
 	});
 }
@@ -188,12 +199,13 @@ export async function refreshProject(input: RefreshProjectInput): Promise<Refres
 	// parse.
 	input.warrenConfigs?.invalidate(id);
 
+	const credentialEnv = forgeFor(row).buildGitCredentialEnv(input.token ?? "");
 	const refreshFn = input.refresh ?? refreshProjectClone;
 	const result: RefreshProjectCloneResult = await refreshFn({
 		config,
 		localPath: row.localPath,
 		ref,
-		token: input.token,
+		credentialEnv,
 		spawn: input.spawn,
 		timeoutMs: input.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS,
 		armHooks,

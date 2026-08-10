@@ -39,11 +39,12 @@ warren add-project [options] <git-url>
 
 | Argument | Required | Description |
 | --- | --- | --- |
-| `<git-url>` | yes | GitHub URL (https or git@) |
+| `<git-url>` | yes | git URL (https or git@) for the project repo |
 
 | Flag | Required | Default | Description |
 | --- | --- | --- | --- |
 | `--default-branch <name>` |  |  | override the auto-detected default branch |
+| `--forge <kind>` |  |  | forge provider: github, gitlab, gitea, forgejo (default: github) |
 | `--url <url>` |  |  | warren server base URL (env WARREN_BASE_URL) |
 | `--token <token>` |  |  | bearer token (env WARREN_API_TOKEN) |
 
