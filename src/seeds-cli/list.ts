@@ -18,7 +18,7 @@
 import { formatError } from "../core/errors.ts";
 import { SeedsCliError } from "./errors.ts";
 import type { SeedsCliDeps } from "./extensions.ts";
-import { SeedsListEnvelopeSchema } from "./schema.ts";
+import { type SeedRow, SeedsListEnvelopeSchema } from "./schema.ts";
 import { DEFAULT_SD_TIMEOUT_MS, truncate } from "./util.ts";
 
 /**
@@ -30,6 +30,39 @@ export async function listSeedStatuses(
 	deps: SeedsCliDeps,
 	projectPath: string,
 ): Promise<ReadonlyMap<string, string>> {
+	const statuses = new Map<string, string>();
+	for (const row of await readSeedRows(deps, projectPath)) {
+		statuses.set(row.id, row.status);
+	}
+	return statuses;
+}
+
+/**
+ * Seeds that are not closed, in the order `sd list` reports them.
+ *
+ * Where `listSeedStatuses` collapses the response to `id → status`, this
+ * keeps the row so callers get the title too — the NewRun form's seed
+ * picker labels its options with it, and an id alone (`warren-a63d`) is not
+ * something an operator can choose between.
+ *
+ * "Not closed" rather than `status === "open"` on purpose: seeds also carry
+ * `in_progress`, and a seed someone is already working is still a valid
+ * dispatch target. Only `closed` is excluded.
+ */
+export async function listOpenSeeds(
+	deps: SeedsCliDeps,
+	projectPath: string,
+): Promise<readonly SeedRow[]> {
+	const rows = await readSeedRows(deps, projectPath);
+	return rows.filter((row) => row.status !== "closed");
+}
+
+/**
+ * Shell `sd list --format json` once and parse the envelope. Shared by both
+ * readers above so the command, the timeout, and the two error shapes have
+ * exactly one definition.
+ */
+async function readSeedRows(deps: SeedsCliDeps, projectPath: string): Promise<readonly SeedRow[]> {
 	const result = await deps.spawn([deps.sdBinary, "list", "--format", "json"], {
 		cwd: projectPath,
 		timeoutMs: deps.timeoutMs ?? DEFAULT_SD_TIMEOUT_MS,
@@ -61,9 +94,5 @@ export async function listSeedStatuses(
 		);
 	}
 
-	const statuses = new Map<string, string>();
-	for (const row of envelope.data.issues) {
-		statuses.set(row.id, row.status);
-	}
-	return statuses;
+	return envelope.data.issues;
 }

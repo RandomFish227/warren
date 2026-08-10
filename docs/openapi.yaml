@@ -314,6 +314,26 @@ paths:
           required: true
           schema:
             type: string
+  /projects/{id}/seeds:
+    get:
+      operationId: listProjectOpenSeedsHandler
+      tags:
+        - projects
+      summary: GET /projects/:id/seeds
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      description: >-
+        Operator-only like its seeds siblings: seed titles are project content, not part of the
+        spectator projection.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
   /projects/{id}/seeds/plans:
     get:
       operationId: listProjectSeedPlansHandler

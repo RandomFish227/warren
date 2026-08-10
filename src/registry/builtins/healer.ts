@@ -74,7 +74,7 @@ export const HEALER_BUILTIN: AgentDefinition = {
 	frontmatter: {
 		source: "builtin",
 		tags: ["agent"],
-		runtime: "pi",
+		runtime: "claude-code",
 		// Opus tier (model-tiers.ts): diagnosing a production fault from a
 		// terse alert is open-ended root-cause work, not a known-failure
 		// patch — worth the stronger model.

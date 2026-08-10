@@ -37,10 +37,16 @@
 	// SDK's NDJSON stream reader the UI consumes (warren-53a7) — listed
 	// file-by-file, like wire.ts, because the whole `../client` directory
 	// would drag node-only modules (config-file.ts) into a DOM-lib build.
+	// `../core/prompt-template.ts` is the `{placeholder}` substitution the
+	// NewRun form applies to a project's promptTemplates. It lives in the
+	// dependency-free kernel precisely so the browser can run the same
+	// renderer the rest of the codebase reasons about, rather than the UI
+	// growing a second copy that drifts.
 	"include": [
 		"src",
 		"../core/wire.ts",
 		"../core/errors.ts",
+		"../core/prompt-template.ts",
 		"../client/ndjson.ts",
 		"../client/errors.ts"
 	],

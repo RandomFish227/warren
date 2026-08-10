@@ -78,11 +78,15 @@ export const PLANNER_BUILTIN: AgentDefinition = {
 	frontmatter: {
 		source: "builtin",
 		tags: ["agent", "interactive"],
-		// warren-ebca: planner is a system-prompt-only canopy agent; it
-		// dispatches onto the pi burrow runtime rather than registering
-		// its own. Without this, burrow looks up "planner" in
+		// warren-ebca: planner is a system-prompt-only agent; it must name a
+		// runtime burrow actually registers, or burrow looks up "planner" in
 		// BUILT_IN_RUNTIMES and the run fails before agent boot.
-		runtime: "pi",
+		//
+		// FORK-LOCAL: upstream points this at "pi". This deployment holds only
+		// a Claude credential (CLAUDE_CODE_OAUTH_TOKEN), which the pi harness
+		// cannot use — a pi-runtime dispatch dies on "401 Invalid bearer
+		// token" before the agent boots.
+		runtime: "claude-code",
 		// Opus tier (model-tiers.ts): the plan planner emits caps the
 		// quality of every downstream step.
 		...MODEL_TIERS.opus,

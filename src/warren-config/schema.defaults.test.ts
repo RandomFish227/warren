@@ -294,6 +294,45 @@ describe("DefaultsConfigSchema ciFixer block (warren-05ea)", () => {
 		if (parsed.success) expect(parsed.data.ciFixer).toBeUndefined();
 	});
 
+	test("accepts promptTemplates with optional description and agent", () => {
+		const parsed = DefaultsConfigSchema.safeParse({
+			promptTemplates: [
+				{ name: "Fix a seed", prompt: "Read sd {seed_id}, implement, run {gate}." },
+				{
+					name: "Small doc change",
+					prompt: "{task}. Keep the diff minimal.",
+					description: "Docs-only edits",
+					agent: "claude-code",
+				},
+			],
+		});
+		expect(parsed.success).toBe(true);
+		expect(parsed.success && parsed.data.promptTemplates?.[0]?.name).toBe("Fix a seed");
+	});
+
+	test("omitting promptTemplates is valid — the form just offers nothing", () => {
+		const parsed = DefaultsConfigSchema.safeParse({ defaultBranch: "main" });
+		expect(parsed.success).toBe(true);
+		expect(parsed.success && parsed.data.promptTemplates).toBeUndefined();
+	});
+
+	test("rejects a prompt template missing a name or prompt, and unknown fields", () => {
+		expect(DefaultsConfigSchema.safeParse({ promptTemplates: [{ prompt: "x" }] }).success).toBe(
+			false,
+		);
+		expect(DefaultsConfigSchema.safeParse({ promptTemplates: [{ name: "x" }] }).success).toBe(
+			false,
+		);
+		expect(
+			DefaultsConfigSchema.safeParse({ promptTemplates: [{ name: "", prompt: "x" }] }).success,
+		).toBe(false);
+		expect(
+			DefaultsConfigSchema.safeParse({
+				promptTemplates: [{ name: "x", prompt: "y", nope: true }],
+			}).success,
+		).toBe(false);
+	});
+
 	test("rejects out-of-range knobs and unknown fields", () => {
 		expect(DefaultsConfigSchema.safeParse({ ciFixer: { maxRetries: -1 } }).success).toBe(false);
 		expect(DefaultsConfigSchema.safeParse({ ciFixer: { maxRetries: 11 } }).success).toBe(false);

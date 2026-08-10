@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { agentsApi, projectsApi, runsApi } from "@/api/client.ts";
 import type { CreateRunInput } from "@/api/types.ts";
+import { PromptTemplatePicker } from "@/components/prompt-template-picker.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Field } from "@/components/ui/field.tsx";
@@ -100,6 +101,17 @@ export function NewRunPage() {
 	});
 	const defaultRole = warrenConfig.data?.defaults?.defaultRole;
 	const defaultPrompt = warrenConfig.data?.defaults?.defaultPrompt;
+	const promptTemplates = warrenConfig.data?.defaults?.promptTemplates ?? [];
+	// Seed ids for a template's `{seed_id}` placeholder. Gated on the project
+	// row's hasSeeds so a project without a queue never fires a request the
+	// server would reject with 400 — the picker just falls back to free text.
+	const projectHasSeeds = projects.data?.projects.find((p) => p.id === project)?.hasSeeds ?? false;
+	const openSeeds = useQuery({
+		queryKey: ["project-open-seeds", project],
+		queryFn: ({ signal }) => projectsApi.openSeeds(project, signal),
+		enabled: project !== "" && projectHasSeeds && promptTemplates.length > 0,
+	});
+	const seedIds = openSeeds.data?.seeds.map((s) => s.id) ?? [];
 	const defaultProvider = warrenConfig.data?.defaults?.defaultProvider;
 	const defaultModel = warrenConfig.data?.defaults?.defaultModel;
 	const configSourceFile = warrenConfig.data?.sourceFile ?? ".warren/config.yaml";
@@ -369,6 +381,21 @@ export function NewRunPage() {
 								) : null}
 							</div>
 						</div>
+
+						<PromptTemplatePicker
+							templates={promptTemplates}
+							seedIds={seedIds}
+							onApply={(next, templateAgent) => {
+								setPrompt(next);
+								setPromptTouched(true);
+								// A template written for a specific agent selects it, but an
+								// explicit operator choice always wins.
+								if (templateAgent !== undefined && !agentTouched) {
+									setAgent(templateAgent);
+									setAgentTouched(true);
+								}
+							}}
+						/>
 
 						<div className="space-y-1.5">
 							<Label htmlFor="prompt">Prompt</Label>

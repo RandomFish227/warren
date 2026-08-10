@@ -169,11 +169,12 @@ describe("PLANNER_BUILTIN", () => {
 		expect(system).toMatch(/0-BASED/);
 	});
 
-	test("declares runtime = 'pi' so dispatch composes on the real runtime", () => {
-		// warren-ebca: see BRAINSTORM_BUILTIN's matching test — planner is
-		// the other system-prompt-only canopy agent whose name does not
-		// match any burrow runtime.
-		expect(PLANNER_BUILTIN.frontmatter.runtime).toBe("pi");
+	test("declares a runtime burrow registers, since its own name is not one", () => {
+		// warren-ebca: planner is a system-prompt-only agent whose name does
+		// not match any burrow runtime, so it must borrow one.
+		// FORK-LOCAL: claude-code rather than upstream's pi — this deployment
+		// holds only a Claude credential.
+		expect(PLANNER_BUILTIN.frontmatter.runtime).toBe("claude-code");
 	});
 
 	test("refuses to invent Plot intent and defers to brainstorm + formalize", () => {
@@ -200,8 +201,9 @@ describe("PR_FIXER_BUILTIN", () => {
 		expect(PR_FIXER_BUILTIN.frontmatter.auto_plan_run).toBeUndefined();
 	});
 
-	test("declares runtime = 'pi' so dispatch composes on the real runtime", () => {
-		expect(PR_FIXER_BUILTIN.frontmatter.runtime).toBe("pi");
+	test("declares a runtime burrow registers, since its own name is not one", () => {
+		// FORK-LOCAL: claude-code rather than upstream's pi.
+		expect(PR_FIXER_BUILTIN.frontmatter.runtime).toBe("claude-code");
 	});
 
 	test("system prompt frames the quality gate as terminal and forbids a new PR", () => {
@@ -334,10 +336,10 @@ describe("seedBuiltinAgents", () => {
 		const result = await seedBuiltinAgents(repo);
 		expect(result.seeded).toContain("planner");
 
-		// The stored version should now have the updated frontmatter with 'runtime' set to 'pi'.
+		// The stored version should now carry the code's runtime value.
 		const stored = await repo.get("planner");
 		expect(stored).not.toBeNull();
 		const rendered = stored?.renderedJson as { frontmatter: { runtime: string } };
-		expect(rendered.frontmatter.runtime).toBe("pi");
+		expect(rendered.frontmatter.runtime).toBe("claude-code");
 	});
 });

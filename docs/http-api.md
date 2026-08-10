@@ -68,6 +68,7 @@ Total routes: **41**.
 | `PATCH` | `/projects/:id` | `patchProjectHandler` |  |
 | `GET` | `/projects/:id/warren-config` | `getProjectWarrenConfigHandler` |  |
 | `GET` | `/projects/:id/triggers` | `getProjectTriggersHandler` |  |
+| `GET` | `/projects/:id/seeds` | `listProjectOpenSeedsHandler` | Operator-only like its seeds siblings: seed titles are project content, not part of the spectator projection. |
 | `GET` | `/projects/:id/seeds/plans` | `listProjectSeedPlansHandler` | Static path — must precede `/projects/:id/seeds/:seedId` so the param route doesn't swallow `plans` as a seed id. |
 | `GET` | `/projects/:id/ready-plans` | `listReadyPlansHandler` |  |
 | `GET` | `/projects/:id/seeds/:seedId` | `getProjectSeedHandler` |  |
