@@ -84,7 +84,7 @@ export const NIGHTWATCH_BUILTIN: AgentDefinition = {
 	frontmatter: {
 		source: "builtin",
 		tags: ["agent"],
-		runtime: "pi",
+		runtime: "claude-code",
 		auto_plan_run: true,
 		auto_plan_run_agent: "pi",
 		// Opus tier (model-tiers.ts): subtle defect/security scanning
