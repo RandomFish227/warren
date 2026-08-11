@@ -3,7 +3,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WorkspaceMaterializationError } from "./errors.ts";
-import { assertFixtureHermetic, fixtureGitOrThrow } from "./git/test-fixture.ts";
+import {
+	assertFixtureHermetic,
+	fixtureGitOrThrow,
+	mkdtempOutsideRepo,
+} from "./git/test-fixture.ts";
 import { branchExists, discoverHostClone, initRepo, listWorktrees } from "./git/worktree.ts";
 import {
 	materializeProjectWorkspace,
@@ -160,8 +164,7 @@ describe("materializeProjectWorkspace", () => {
 	});
 
 	test("falls back to git clone when no host clone is detected", async () => {
-		// Use /tmp — os.tmpdir() in burrow is inside the git worktree.
-		const outside = mkdtempSync(join("/tmp", "warren-outside-"));
+		const outside = mkdtempOutsideRepo("warren-outside-");
 		try {
 			const ws = join(outside, "ws");
 			const result = await materializeProjectWorkspace({
@@ -180,7 +183,7 @@ describe("materializeProjectWorkspace", () => {
 	});
 
 	test("throws when neither a host clone nor an originUrl is available", async () => {
-		const outside = mkdtempSync(join(tmpdir(), "warren-outside-empty-"));
+		const outside = mkdtempOutsideRepo("warren-outside-empty-");
 		try {
 			await expect(
 				materializeProjectWorkspace({
@@ -315,7 +318,7 @@ describe("removeMaterializedWorkspace", () => {
 	});
 
 	test("removes a clone-backed workspace by deleting the directory tree", async () => {
-		const outside = mkdtempSync(join("/tmp", "warren-rm-outside-"));
+		const outside = mkdtempOutsideRepo("warren-rm-outside-");
 		try {
 			const ws = join(outside, "ws");
 			const result = await materializeProjectWorkspace({

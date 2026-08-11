@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { WorkspaceMaterializationError } from "../errors.ts";
 import { runGit, runGitOrThrow } from "./exec.ts";
+import { mkdtempOutsideRepo } from "./test-fixture.ts";
 
 /**
  * Strip inherited `GIT_*` vars (GIT_DIR, GIT_INDEX_FILE, GIT_WORK_TREE, ...)
@@ -28,10 +29,7 @@ describe("runGit", () => {
 	let root: string;
 
 	beforeEach(() => {
-		// Use /tmp (not os.tmpdir()) so the dir is never inside a git repo.
-		// In burrow, os.tmpdir() returns /workspace/.burrow-tmp which IS a
-		// git worktree, causing "outside a repo" assertions to fail.
-		root = mkdtempSync(join("/tmp", "warren-exec-"));
+		root = mkdtempOutsideRepo("warren-exec-");
 	});
 
 	afterEach(() => {
@@ -116,7 +114,7 @@ describe("runGitOrThrow", () => {
 	let root: string;
 
 	beforeEach(() => {
-		root = mkdtempSync(join("/tmp", "warren-exec-throw-"));
+		root = mkdtempOutsideRepo("warren-exec-throw-");
 	});
 
 	afterEach(() => {

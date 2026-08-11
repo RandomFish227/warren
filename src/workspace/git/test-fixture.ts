@@ -42,6 +42,15 @@ export interface FixtureGitOptions {
 	stdin?: string;
 }
 
+/** The inherited env with every `GIT_*` var dropped. No discovery ceiling. */
+function scrubbedGitEnv(): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const [k, v] of Object.entries(process.env)) {
+		if (v !== undefined && !k.startsWith("GIT_")) out[k] = v;
+	}
+	return out;
+}
+
 /**
  * Environment for a hermetic fixture git spawn: the inherited env with every
  * `GIT_*` var dropped (a parent hook's GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE
@@ -53,10 +62,7 @@ export function gitFixtureEnv(
 	repoPath: string,
 	extra: Record<string, string | undefined> = {},
 ): Record<string, string> {
-	const out: Record<string, string> = {};
-	for (const [k, v] of Object.entries(process.env)) {
-		if (v !== undefined && !k.startsWith("GIT_")) out[k] = v;
-	}
+	const out = scrubbedGitEnv();
 	out.GIT_CEILING_DIRECTORIES = dirname(resolve(repoPath));
 	for (const [k, v] of Object.entries(extra)) {
 		if (v === undefined) delete out[k];
@@ -306,4 +312,65 @@ export function createGitFixtureSync(opts: CreateGitFixtureOptions = {}): GitFix
 		git: (args, gitOpts) => fixtureGitSync(path, args, gitOpts),
 		cleanup: () => rmSync(root, { recursive: true, force: true }),
 	};
+}
+
+/**
+ * Temp root for fixtures whose subject is what git does when there is NO repo:
+ * `discoverHostClone` returning null, `materializeProjectWorkspace` falling
+ * back to a clone, `runGit` reporting "not a repository".
+ *
+ * `os.tmpdir()` is the wrong root for those. A sandbox may point TMPDIR inside
+ * a git worktree — burrow sets it to `/workspace/.burrow-tmp` — and then the
+ * `mkdtemp` dir is nested in a repo, upward discovery finds the sandbox's own
+ * worktree, and every such assertion inverts.
+ *
+ * GIT_CEILING_DIRECTORIES is warren's usual lever against that ascent, and it
+ * does stop it, but it cannot reach these call sites. The suites strip every
+ * `GIT_*` var from the spawn env on purpose (warren-cfa7), which takes the
+ * ceiling with it, and the functions under test accept no env argument, so
+ * there is nowhere to reinstate it. A root that is not inside a repo to begin
+ * with is what survives the scrub.
+ *
+ * Point WARREN_TEST_TMP_ROOT elsewhere when `/tmp` is unusable or itself
+ * inside a checkout. {@link mkdtempOutsideRepo} verifies the root either way.
+ */
+export const OUTSIDE_REPO_TMP_ROOT = process.env.WARREN_TEST_TMP_ROOT ?? "/tmp";
+
+let outsideRootVerified = false;
+
+/**
+ * `mkdtemp` a directory guaranteed to sit outside every git repo. Verifies
+ * {@link OUTSIDE_REPO_TMP_ROOT} once per process and throws naming the
+ * offending toplevel, so a bad root fails loudly instead of quietly inverting
+ * the assertions it was chosen to protect.
+ */
+export function mkdtempOutsideRepo(prefix: string): string {
+	if (!outsideRootVerified) {
+		assertRootOutsideRepo(OUTSIDE_REPO_TMP_ROOT);
+		outsideRootVerified = true;
+	}
+	return mkdtempSync(join(OUTSIDE_REPO_TMP_ROOT, prefix));
+}
+
+/**
+ * The one fixture spawn in this module that deliberately pins NO discovery
+ * ceiling. Every other spawn pins one to keep discovery from escaping; here
+ * the escape IS the subject, and a ceiling would mask exactly the nesting the
+ * guard exists to catch.
+ */
+function assertRootOutsideRepo(root: string): void {
+	const proc = Bun.spawnSync({
+		cmd: ["git", "-C", root, "rev-parse", "--show-toplevel"],
+		cwd: root,
+		env: scrubbedGitEnv(),
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	if (proc.exitCode === 0) {
+		throw new Error(
+			`test temp root ${root} sits inside the git repo at ${proc.stdout.toString().trim()}, ` +
+				`so "outside a repo" assertions would invert. Point WARREN_TEST_TMP_ROOT at a ` +
+				`directory outside every checkout.`,
+		);
+	}
 }
