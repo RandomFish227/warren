@@ -85,7 +85,7 @@ describe("git worktree helpers", () => {
 	});
 
 	test("discoverHostClone returns null outside a git repo", async () => {
-		const outside = mkdtempSync(join(tmpdir(), "warren-non-git-"));
+		const outside = mkdtempSync(join("/tmp", "warren-non-git-"));
 		try {
 			const result = await discoverHostClone(outside);
 			expect(result).toBeNull();

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WorkspaceMaterializationError } from "../errors.ts";
 import { runGit, runGitOrThrow } from "./exec.ts";
@@ -29,7 +28,7 @@ describe("runGit", () => {
 	let root: string;
 
 	beforeEach(() => {
-		root = mkdtempSync(join(tmpdir(), "warren-exec-"));
+		root = mkdtempSync(join("/tmp", "warren-exec-"));
 	});
 
 	afterEach(() => {
@@ -114,7 +113,7 @@ describe("runGitOrThrow", () => {
 	let root: string;
 
 	beforeEach(() => {
-		root = mkdtempSync(join(tmpdir(), "warren-exec-throw-"));
+		root = mkdtempSync(join("/tmp", "warren-exec-throw-"));
 	});
 
 	afterEach(() => {
