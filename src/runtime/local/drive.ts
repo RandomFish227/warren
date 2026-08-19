@@ -17,13 +17,19 @@
  *      plus the warren-c865 home-credential forward: with $HOME now a real
  *      per-run directory, the host's claude OAuth blob is copied into it so
  *      auth resolves via $HOME lookup instead of the workspace.
- *   3. Spawn through `runSandboxed`. Batch runtimes (claude-code) close
+ *   3. Under `network=restricted`, start a per-run loopback CONNECT proxy
+ *      (warren-70bb / burrow `src/proxy/server.ts`), set `proxyAddress` on
+ *      the profile, and overlay HTTP(S)_PROXY onto the agent env. open/none
+ *      skip this path entirely so default behavior stays byte-identical.
+ *   4. Spawn through `runSandboxed`. Batch runtimes (claude-code) close
  *      stdin at spawn; stdin-held runtimes (pi — declares
  *      `shouldCloseStdinOnEvent`) keep it open until the terminal event
  *      lands, with mid-run steering delivered over the live stdin
  *      (`encodeSteeringMessage`) and the auto-reply hook
- *      (`autoRespondToEvent`) declining interactive RPCs.
- *   4. Terminalize the record: cancelled (cancel() won the race), oom_killed
+ *      (`autoRespondToEvent`) declining interactive RPCs. The proxy stops
+ *      in the drive loop's `finally` so a hung CONNECT tunnel cannot pin
+ *      the run.
+ *   5. Terminalize the record: cancelled (cancel() won the race), oom_killed
  *      (the cgroup probe, burrow-2083 parity), stream error, or the exit
  *      code. An agent that exits WITHOUT a terminal envelope gets a
  *      synthesized `agent_end` (warren-9a4a parity with the k8s entrypoint)
@@ -35,25 +41,34 @@
  */
 
 import { extractAgentEventEnvelope } from "../../core/event-envelope.ts";
+import type { ProxyHandle, StartProxyOptions } from "../../sandbox/proxy-server.ts";
 import { runSandboxed } from "../../sandbox/sandbox.ts";
 import type { SandboxProfile, SpawnCommand, SpawnResult } from "../../sandbox/types.ts";
-import { forwardClaudeHostCredentials } from "../adapters/claude-credentials.ts";
-import {
-	type AdapterRuntimeEvent,
-	type AgentRuntimeAdapter,
-	allAdapters,
-} from "../adapters/index.ts";
+import type { AdapterRuntimeEvent, AgentRuntimeAdapter } from "../adapters/index.ts";
 import type { AgentFrontmatter } from "../adapters/types.ts";
 import type { RunSpec } from "../contract.ts";
+import {
+	abandonSpawnedChild,
+	cancelWon,
+	prepareSpawn,
+	settleCancelledIfNeeded,
+} from "./drive-prepare.ts";
 import { createStdinController, type StdinController, startMidRunSteering } from "./drive-stdin.ts";
 import type { LocalRunRecord, LocalRunStore } from "./run-store.ts";
 
 /** Mid-run steering poll cadence — burrow's MID_RUN_INBOX_POLL_MS verbatim. */
 export const MID_RUN_INBOX_POLL_MS = 200;
 
+export type StartProxyFn = (opts: StartProxyOptions) => Promise<ProxyHandle>;
+
 export interface DriveDeps {
 	/** Spawn seam — defaults to `runSandboxed` (tests inject a fake child). */
 	readonly spawn?: (profile: SandboxProfile, command: SpawnCommand) => Promise<SpawnResult>;
+	/**
+	 * Proxy starter seam (warren-70bb) — defaults to `startProxy`. Tests inject
+	 * a fake so restricted-network runs never bind a real loopback port.
+	 */
+	readonly startProxy?: StartProxyFn;
 	/** Adapter registry — defaults to warren's built-ins. */
 	readonly registry?: { get(id: string): AgentRuntimeAdapter | undefined };
 	/** Test seam: mid-run inbox poll cadence (ms). */
@@ -61,11 +76,6 @@ export interface DriveDeps {
 	readonly now?: () => Date;
 	readonly log?: (message: string) => void;
 }
-
-/** The default adapter registry: warren's built-in runtime adapters. */
-const DEFAULT_REGISTRY: { get(id: string): AgentRuntimeAdapter | undefined } = {
-	get: (id) => allAdapters().find((adapter) => adapter.runtimeId === id),
-};
 
 /**
  * Pull the agent frontmatter off `spec.metadata.frontmatter` (the domain's
@@ -127,6 +137,9 @@ export async function driveLocalRun(
 	try {
 		await spawnAndPump(store, record, spec, profile, deps);
 	} catch (err) {
+		// A cancel that already settled the record must stay cancelled even if
+		// teardown throws (double-cancel, closed stream, etc.).
+		if (store.isTerminal(record)) return;
 		const message = err instanceof Error ? err.message : String(err);
 		store.appendEvent(record, { kind: "error", stream: "system", payload: { message } });
 		store.terminalize(record, {
@@ -138,23 +151,6 @@ export async function driveLocalRun(
 	}
 }
 
-/** Fail fast with a structured record when the runtime id is unknown or spawnless. */
-function failBeforeSpawn(
-	store: LocalRunStore,
-	record: LocalRunRecord,
-	message: string,
-	deps: DriveDeps,
-): void {
-	const now = deps.now ?? (() => new Date());
-	store.appendEvent(record, { kind: "error", stream: "system", payload: { message } }, now);
-	store.terminalize(record, {
-		phase: "failed",
-		exitCode: null,
-		terminalReason: "error",
-		errorMessage: message,
-	});
-}
-
 async function spawnAndPump(
 	store: LocalRunStore,
 	record: LocalRunRecord,
@@ -163,56 +159,52 @@ async function spawnAndPump(
 	deps: DriveDeps,
 ): Promise<void> {
 	const log = deps.log ?? (() => {});
-	const runtime = (deps.registry ?? DEFAULT_REGISTRY).get(spec.runtimeId);
-	if (runtime === undefined) {
-		failBeforeSpawn(store, record, `runtime '${spec.runtimeId}' is not registered`, deps);
+	// Cancel can win before spawn (LocalEngine.cancel terminalizes immediately).
+	if (cancelWon(store, record)) {
+		settleCancelledIfNeeded(store, record);
 		return;
 	}
-	if (runtime.buildSpawnCommand === undefined) {
-		failBeforeSpawn(
-			store,
-			record,
-			`runtime '${spec.runtimeId}' declares no buildSpawnCommand`,
-			deps,
-		);
+	const prepared = await prepareSpawn(store, record, spec, profile, deps);
+	if (prepared === null) return;
+	const { runtime, runProfile, runCommand, proxy, useStdinHold } = prepared;
+
+	// Re-check after async setup — cancel may have landed mid-prepare.
+	if (cancelWon(store, record)) {
+		await proxy?.stop();
+		settleCancelledIfNeeded(store, record);
 		return;
 	}
-
-	const pendingMessages = store.claimPending(record, deps.now);
-	if (runtime.prepareWorkspace !== undefined) {
-		await runtime.prepareWorkspace({ runId: spec.runId, workspacePath: record.workspacePath });
-	}
-	// warren-c865, live: with $HOME a real per-run directory (not the
-	// workspace), forward the host's claude OAuth blob into it so auth
-	// resolves via $HOME lookup. ANTHROPIC_API_KEY rides the env allowlist.
-	if (spec.runtimeId === "claude-code") {
-		await forwardClaudeHostCredentials(record.homePath).catch(() => {});
-	}
-
-	const useStdinHold = typeof runtime.shouldCloseStdinOnEvent === "function";
-	const frontmatter = readSpecFrontmatter(spec.metadata);
-	const baseCommand = runtime.buildSpawnCommand({
-		runId: spec.runId,
-		prompt: spec.prompt,
-		pendingMessages,
-		workspacePath: record.workspacePath,
-		...(frontmatter !== undefined ? { frontmatter } : {}),
-	});
-	const command: SpawnCommand = useStdinHold ? { ...baseCommand, holdStdin: true } : baseCommand;
 	log(`local-drive: launching '${runtime.runtimeId}' in ${record.workspacePath}`);
-	const proc = await (deps.spawn ?? runSandboxed)(profile, command);
+	let proc: SpawnResult;
+	try {
+		proc = await (deps.spawn ?? runSandboxed)(runProfile, runCommand);
+	} catch (err) {
+		await proxy?.stop();
+		throw err;
+	}
+	if (cancelWon(store, record)) {
+		await abandonSpawnedChild(store, record, proc, proxy);
+		return;
+	}
 	record.proc = proc;
 	store.markRunning(record);
 
 	const stdin = createStdinController(runtime, proc, useStdinHold);
 	const midRun = startMidRunSteering(store, record, runtime, proc, stdin, deps);
-	const outcome = await pumpToExit(store, record, runtime, proc, stdin, deps);
-	midRun.abort();
-	await midRun.done;
-	await stdin.closeIfDangling();
-
-	terminalize(store, record, profile, proc, outcome, deps);
-	log(`local-drive: '${runtime.runtimeId}' exited ${outcome.exitCode}`);
+	try {
+		const outcome = await pumpToExit(store, record, runtime, proc, stdin, deps);
+		terminalize(store, record, runProfile, proc, outcome, deps);
+		log(`local-drive: '${runtime.runtimeId}' exited ${outcome.exitCode}`);
+	} finally {
+		// Stop the steering loop before tearing down stdin so its final
+		// poll tick can't race the closeStdin path (burrow dispatch.ts).
+		midRun.abort();
+		await midRun.done;
+		await stdin.closeIfDangling();
+		// Bound proxy teardown to spawn lifetime — a hung CONNECT tunnel
+		// can't pin the run (burrow dispatch.ts shape).
+		await proxy?.stop();
+	}
 }
 
 interface PumpOutcome {
@@ -272,6 +264,10 @@ function terminalize(
 	outcome: PumpOutcome,
 	deps: DriveDeps,
 ): void {
+	// LocalEngine.cancel terminalizes immediately (warren-8a6e); the drive
+	// loop still drains the child but must not overwrite a settled phase
+	// (e.g. cancelled → failed from a non-zero kill exit).
+	if (store.isTerminal(record)) return;
 	const now = deps.now ?? (() => new Date());
 	const { exitCode } = outcome;
 	if (record.cancelRequested) {
