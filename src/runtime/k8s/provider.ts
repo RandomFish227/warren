@@ -151,10 +151,9 @@ export interface K8sProviderDeps {
 	readonly finalizeSetTimer?: (fn: () => void, ms: number) => { cancel: () => void };
 	/**
 	 * OPTIONAL git-credential mint seam (forge-contract.md §4.1, warren-c9ac).
-	 * `create()` mints the window-1 init-container clone credential at pod-spec
-	 * time so a short-lived App-mode token is fresh for the clone. Boot wires
-	 * this to `mintGitCredentialSecret` over the resolved forge; absent, the pod
-	 * spec keeps the static `warren-git-token` Secret ref (PAT-mode posture).
+	 * `create()` mints the window-1 init-container clone credential at pod-spec time.
+	 * Boot wires this via `mintGitCredential(...).then(c => c?.secret)` over the
+	 * resolved forge; absent, the pod spec keeps the static Secret ref (PAT-mode).
 	 */
 	readonly mintGitCredential?: (gitUrl: string) => Promise<string | undefined>;
 	/**
@@ -475,7 +474,8 @@ export class K8sProvider implements RuntimeProvider {
 	finalize(handle: RunHandle, intent: FinalizeIntent): Promise<FinalizeResult> {
 		const env = this.deps.serverEnv ?? process.env;
 		const gitToken = resolveK8sPushToken({
-			intentToken: intent.gitToken,
+			// warren-1154: pack only .secret into the K8s wire (InPodFinalizeIntent.gitToken).
+			intentToken: intent.gitCredential?.secret,
 			env,
 			allowStaticEnv: this.deps.allowStaticPushTokenFallback ?? true,
 		});

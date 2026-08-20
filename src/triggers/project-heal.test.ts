@@ -82,6 +82,7 @@ describe("ProjectHealTracker", () => {
 describe("recloneMissingProject", () => {
 	test("derives owner/name from gitUrl and pins the stored defaultBranch + token", async () => {
 		const calls: Record<string, unknown>[] = [];
+		const gitCredential = { username: "x-access-token", secret: "ghs_secret", expiresAt: null };
 		await recloneMissingProject({
 			project: makeProject({
 				gitUrl: "https://github.com/acme/widget.git",
@@ -89,7 +90,7 @@ describe("recloneMissingProject", () => {
 			}),
 			config: CONFIG,
 			spawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
-			token: "ghs_secret",
+			gitCredential,
 			clone: async (input) => {
 				calls.push({ ...input, spawn: undefined });
 				return { localPath: input.config.root, defaultBranch: input.defaultBranch ?? "" };
@@ -101,7 +102,7 @@ describe("recloneMissingProject", () => {
 			name: "widget",
 			gitUrl: "https://github.com/acme/widget.git",
 			defaultBranch: "trunk",
-			token: "ghs_secret",
+			gitCredential,
 		});
 	});
 });

@@ -5,8 +5,10 @@
  * per-spawn minted push credential.
  */
 
-import { mintGitCredentialSecret } from "../../forge/credentials.ts";
+import type { GitCredential } from "../../forge/contract.ts";
+import { mintGitCredential } from "../../forge/credentials.ts";
 import type { FinalizeIntent, FinalizeResult, RunHandle } from "../../runtime/contract.ts";
+import { extractGitHost } from "../../workspace/git/credential-env.ts";
 import type { ReapPipelineContext } from "./pipeline.ts";
 import { seededArtifactResetPaths } from "./seed-reset.ts";
 
@@ -20,23 +22,25 @@ export async function runProviderFinalize(ctx: ReapPipelineContext): Promise<Fin
 	// Merges run unconditionally; COMMITS gate on project flags (warren-1f56).
 	const commit: string[] = [];
 	if (ctx.project.hasSeeds) commit.push("seeds");
-	// warren-4e1c: mint the branch-push credential immediately before the
+	// warren-4e1c/1154: mint the branch-push credential immediately before the
 	// finalize spawn (forge-contract.md §4 — minted, never held on a config).
 	// A mint failure is recorded and degrades to an anonymous push, which fails
 	// closed as a `branch_push` stage failure on a private repo — rather than
 	// skipping the merges wholesale.
-	let gitToken: string | undefined;
+	let gitCredential: GitCredential | undefined;
 	if (ctx.input.forge !== undefined) {
 		try {
-			gitToken = await mintGitCredentialSecret(ctx.input.forge, ctx.project.gitUrl);
+			gitCredential = await mintGitCredential(ctx.input.forge, ctx.project.gitUrl);
 		} catch (err) {
 			await ctx.fail("branch_push", err);
 		}
 	}
+	const originHost = extractGitHost(ctx.project.gitUrl);
 	const intent: FinalizeIntent = {
 		branch: ctx.branch ?? "",
 		push: true,
-		...(gitToken !== undefined ? { gitToken } : {}),
+		...(gitCredential !== undefined ? { gitCredential } : {}),
+		...(originHost !== undefined ? { originHost } : {}),
 		// Opaque artifact keys the domain asks the provider to merge (warren-df3e);
 		// the returned `FinalizeResult.artifacts` is keyed the same way.
 		artifacts: ["mulch", "seeds", "plans"],

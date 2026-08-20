@@ -23,7 +23,7 @@
 
 import type { Repos } from "../db/repos/index.ts";
 import type { Forge } from "../forge/contract.ts";
-import { mintGitCredentialSecret } from "../forge/credentials.ts";
+import { mintGitCredential } from "../forge/credentials.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { spawnRun } from "../runs/index.ts";
@@ -131,25 +131,23 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		tracker: projectHealTracker,
 		config: input.projectsConfig,
 		spawn: input.projectSpawn,
-		mintToken: (project) => mintGitCredentialSecret(input.forge, project.gitUrl),
+		mintToken: (project) => mintGitCredential(input.forge, project.gitUrl),
 		...(input.logger !== undefined ? { logger: input.logger } : {}),
 		...(input.cloneExists !== undefined ? { exists: input.cloneExists } : {}),
 		...(input.now !== undefined ? { now: input.now } : {}),
 	});
 
-	const mintProjectGitSecret = async (projectId: string): Promise<string | undefined> => {
-		// §4 per-spawn mint: credential is minted immediately before the spawn,
-		// never captured at boot. Unowned URL / `no_credential` → undefined.
+	const mintProjectGitCredential = async (projectId: string) => {
+		// §4 per-spawn mint (warren-1154): credential is minted immediately before
+		// the spawn, never captured at boot. Unowned URL / `no_credential` → undefined.
 		const project = await input.repos.projects.get(projectId);
-		return project !== null
-			? await mintGitCredentialSecret(input.forge, project.gitUrl)
-			: undefined;
+		return project !== null ? await mintGitCredential(input.forge, project.gitUrl) : undefined;
 	};
 
 	const spawnDispatch: DispatchSpawnFn = async (
 		args: DispatchSpawnInput,
 	): Promise<DispatchSpawnResult> => {
-		const gitSecret = await mintProjectGitSecret(args.projectId);
+		const gitCredential = await mintProjectGitCredential(args.projectId);
 		// warren-9ce3: origin from the resolved trigger kind; seedId forward
 		// closes the scheduled-seed loss (was only buried in metadata).
 		const dispatchOrigin = args.trigger === "scheduled" ? "scheduled" : "cron";
@@ -166,7 +164,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			...(args.maxCostUsd !== undefined ? { maxCostUsdOverride: args.maxCostUsd } : {}),
 			projectsConfig: input.projectsConfig,
 			projectSpawn: input.projectSpawn,
-			githubToken: gitSecret,
+			...(gitCredential !== undefined ? { gitCredential } : {}),
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: seedsDeps,
 			...trackerOption,
@@ -192,7 +190,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 	const ciFixerSpawn: TickCiFixerSpawnFn = async (
 		args: TickCiFixerSpawnInput,
 	): Promise<{ runId: string }> => {
-		const gitSecret = await mintProjectGitSecret(args.projectId);
+		const ciFixerCred = await mintProjectGitCredential(args.projectId);
 		const result = await spawnRunFn({
 			repos: input.repos,
 			runtimeProvider: input.runtimeProvider,
@@ -207,7 +205,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			targetBranch: args.targetBranch,
 			projectsConfig: input.projectsConfig,
 			projectSpawn: input.projectSpawn,
-			githubToken: gitSecret,
+			...(ciFixerCred !== undefined ? { gitCredential: ciFixerCred } : {}),
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: seedsDeps,
 			...trackerOption,

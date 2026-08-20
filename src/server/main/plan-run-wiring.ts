@@ -12,7 +12,8 @@
 
 import type { Repos } from "../../db/repos/index.ts";
 import type { Forge } from "../../forge/contract.ts";
-import { mintGitCredentialSecret } from "../../forge/credentials.ts";
+import { mintGitCredential } from "../../forge/credentials.ts";
+import { extractGitHost } from "../../workspace/git/credential-env.ts";
 import {
 	bootPlanRunCoordinator,
 	type CoordinatorCloseChildSeedFn,
@@ -150,11 +151,12 @@ function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSe
 			// the close entirely for tracker-served projects (caught by
 			// acceptance scenario 43).
 			if (issueTracker.capabilities.isGitNative && !project.hasSeeds) return;
-			// warren-63e7: mint the fetch/push credential from the forge
+			// warren-63e7/1154: mint the fetch/push credential from the forge
 			// immediately before the git spawns (forge-contract.md §4 — minted,
-			// never held) instead of reading a boot-captured env.GITHUB_TOKEN.
-			// Undefined → anonymous git, the old no-token behavior.
-			const gitSecret = await mintGitCredentialSecret(forge, project.gitUrl);
+			// never held). Pass the full GitCredential so close-child-seed never
+			// names forge-specific values (§0 invariant).
+			const gitCredential = await mintGitCredential(forge, project.gitUrl);
+			const originHost = extractGitHost(project.gitUrl);
 			const result = await closeMergedChildSeed({
 				projectPath: project.localPath,
 				defaultBranch: project.defaultBranch,
@@ -165,7 +167,8 @@ function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSe
 				gitBinary: projectsConfig.gitBinary,
 				// Minted per close so the fetch/push work against private repos
 				// on the K8s control plane (no supervisor insteadOf rule there).
-				githubToken: gitSecret,
+				...(gitCredential !== undefined ? { gitCredential } : {}),
+				...(originHost !== undefined ? { originHost } : {}),
 			});
 			logger.info(
 				{ planRunId: planRun.id, seq: child.seq, seedId: child.seedId, outcome: result.kind },
@@ -268,9 +271,8 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 			warrenConfigs,
 			projectsConfig,
 			projectSpawn,
-			// Raw token for the pre-dispatch refresh fetch (private repos on
-			// the K8s control plane) — see SpawnRunInput.githubToken.
-			githubToken: env.GITHUB_TOKEN,
+			// warren-1154: the forge mints a fresh credential per child dispatch.
+			forge,
 			seedsCli,
 			...(issueTracker !== undefined ? { issueTracker } : {}),
 			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
