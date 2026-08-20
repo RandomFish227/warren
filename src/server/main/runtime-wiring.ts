@@ -38,7 +38,7 @@ import {
 	Watch,
 } from "@kubernetes/client-node";
 import type { Forge } from "../../forge/contract.ts";
-import { mintGitCredentialSecret } from "../../forge/credentials.ts";
+import { mintGitCredential } from "../../forge/credentials.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { AdmissionCounterSink } from "../../runtime/k8s/admission.ts";
 import {
@@ -267,7 +267,7 @@ function k8sForgeTokenWindows(forge: Forge | undefined): {
 } {
 	if (forge === undefined) return {};
 	return {
-		k8sMintGitCredential: (gitUrl) => mintGitCredentialSecret(forge, gitUrl),
+		k8sMintGitCredential: (gitUrl) => mintGitCredential(forge, gitUrl).then((c) => c?.secret),
 		k8sAllowStaticPushTokenFallback: forge.capabilities.credentialLifetime === "static",
 	};
 }

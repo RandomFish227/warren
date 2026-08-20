@@ -31,6 +31,7 @@
 import { existsSync } from "node:fs";
 import { formatError } from "../core/errors.ts";
 import type { ProjectRow } from "../db/schema.ts";
+import type { GitCredential } from "../forge/contract.ts";
 import { cloneProjectRepo, type SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { parseGitHubUrl } from "../projects/url.ts";
@@ -102,8 +103,11 @@ export interface RecloneMissingProjectInput {
 	readonly project: ProjectRow;
 	readonly config: ProjectsConfig;
 	readonly spawn: SpawnFn;
-	/** `GITHUB_TOKEN` for private-repo access — see `CloneProjectInput.token`. */
-	readonly token?: string;
+	/**
+	 * Provider-neutral git credential for private-repo access (warren-1154) —
+	 * see `CloneProjectInput.gitCredential`. Absent → anonymous clone.
+	 */
+	readonly gitCredential?: GitCredential;
 	readonly timeoutMs?: number;
 	/** Injected cloner; defaults to the live `cloneProjectRepo`. */
 	readonly clone?: typeof cloneProjectRepo;
@@ -126,7 +130,7 @@ export async function recloneMissingProject(input: RecloneMissingProjectInput): 
 		owner: parsed.owner,
 		name: parsed.name,
 		defaultBranch: input.project.defaultBranch,
-		token: input.token,
+		...(input.gitCredential !== undefined ? { gitCredential: input.gitCredential } : {}),
 		spawn: input.spawn,
 		...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
 	});
@@ -155,12 +159,12 @@ export interface ProjectCloneHealerInput {
 	readonly config: ProjectsConfig;
 	readonly spawn: SpawnFn;
 	/**
-	 * Per-reclone credential mint (warren-0b49, forge-contract.md §4 —
+	 * Per-reclone credential mint (warren-0b49/1154, forge-contract.md §4 —
 	 * credentials are minted, never held). Invoked immediately before the
 	 * re-clone spawns git; the boot wiring resolves it from the boot-resolved
-	 * forge via `mintGitCredentialSecret`. Absent → anonymous git.
+	 * forge via `mintGitCredential`. Absent → anonymous git.
 	 */
-	readonly mintToken?: (project: ProjectRow) => Promise<string | undefined>;
+	readonly mintToken?: (project: ProjectRow) => Promise<GitCredential | undefined>;
 	readonly timeoutMs?: number;
 	readonly logger?: HealLogger;
 	/** Filesystem probe — overrideable for tests. */
@@ -230,12 +234,12 @@ async function attemptReclone(
 	recloneFn: typeof recloneMissingProject,
 	project: ProjectRow,
 ): Promise<void> {
-	const token = input.mintToken !== undefined ? await input.mintToken(project) : undefined;
+	const gitCredential = input.mintToken !== undefined ? await input.mintToken(project) : undefined;
 	await recloneFn({
 		project,
 		config: input.config,
 		spawn: input.spawn,
-		...(token !== undefined ? { token } : {}),
+		...(gitCredential !== undefined ? { gitCredential } : {}),
 		...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
 	});
 }

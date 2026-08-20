@@ -38,6 +38,8 @@
 
 import type { Repos } from "../../db/repos/index.ts";
 import type { RunFailureReason, RunRow } from "../../db/schema.ts";
+import type { Forge, GitCredential } from "../../forge/contract.ts";
+import { mintGitCredential } from "../../forge/credentials.ts";
 import type { SpawnFn as ProjectSpawnFn } from "../../projects/clone.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
@@ -156,6 +158,7 @@ function buildRetrySpawnInput(
 	run: RunRow,
 	projectId: string,
 	decision: InfraLostRetryDecision,
+	gitCredential: GitCredential | undefined,
 ): SpawnRunInput {
 	const draft: RetrySpawnDraft = {
 		repos: input.repos,
@@ -181,7 +184,7 @@ function buildRetrySpawnInput(
 	if (input.warrenConfigs !== undefined) draft.warrenConfigs = input.warrenConfigs;
 	if (input.seedsCli !== undefined) draft.seedsCli = input.seedsCli;
 	if (input.issueTracker !== undefined) draft.issueTracker = input.issueTracker;
-	if (input.githubToken !== undefined) draft.githubToken = input.githubToken;
+	if (gitCredential !== undefined) draft.gitCredential = gitCredential;
 	if (input.runBranchPrefixDefault !== undefined) {
 		draft.runBranchPrefixDefault = input.runBranchPrefixDefault;
 	}
@@ -206,8 +209,12 @@ export interface CreateInfraLostRetryHookInput {
 	readonly seedsCli?: SeedsCliDeps;
 	/** Boot-resolved IssueTracker (warren-5819) — threading seam for the retry spawn. */
 	readonly issueTracker?: IssueTracker;
-	/** Raw `GITHUB_TOKEN` for the pre-dispatch refresh fetch. */
-	readonly githubToken?: string;
+	/**
+	 * Boot-resolved forge (warren-1154). The hook mints a fresh `GitCredential`
+	 * per retry dispatch so a short-lived App credential never outlives its
+	 * window. Absent → anonymous git (the old no-token behavior).
+	 */
+	readonly forge?: Forge;
 	readonly runBranchPrefixDefault?: string;
 	/** Live tail fan-out for the linkage events; omit in tests. */
 	readonly broker?: RunEventBroker;
@@ -215,6 +222,21 @@ export interface CreateInfraLostRetryHookInput {
 	readonly logger?: BridgeLogger;
 	/** Test seam — defaults to the live `spawnRun`. */
 	readonly spawnRunFn?: typeof spawnRun;
+}
+
+/**
+ * warren-1154: mint a fresh credential per retry (forge-contract.md §4 —
+ * minted, never held). Returns undefined on missing forge or no_credential.
+ * Extracted to keep the hook closure under the complexity ceiling.
+ */
+async function mintRetryCredential(
+	input: CreateInfraLostRetryHookInput,
+	projectId: string,
+): Promise<GitCredential | undefined> {
+	if (input.forge === undefined) return undefined;
+	const project = await input.repos.projects.get(projectId);
+	if (project === null) return undefined;
+	return mintGitCredential(input.forge, project.gitUrl).catch(() => undefined);
 }
 
 /**
@@ -258,7 +280,10 @@ export function createInfraLostRetryHook(input: CreateInfraLostRetryHookInput): 
 		const projectId = run.projectId;
 		if (projectId === null) return;
 		try {
-			const result = await spawnRunFn(buildRetrySpawnInput(input, run, projectId, decision));
+			const gitCredential = await mintRetryCredential(input, projectId);
+			const result = await spawnRunFn(
+				buildRetrySpawnInput(input, run, projectId, decision, gitCredential),
+			);
 			input.bridges.start(result.run.id, result.sandboxRun.id, result.sandbox.id, run.mode);
 			// Linkage in both directions so an operator tailing either run can
 			// follow the chain (warren-4af7).

@@ -1,6 +1,8 @@
 import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/schema.ts";
-import { mintGitCredentialSecret } from "../../forge/credentials.ts";
+import type { GitCredential } from "../../forge/contract.ts";
+import { mintGitCredential } from "../../forge/credentials.ts";
 import type { RunHandle, RuntimeProvider, WorkspaceInfo } from "../../runtime/contract.ts";
+import { extractGitHost } from "../../workspace/git/credential-env.ts";
 import { lifecycleBus } from "../lifecycle-bus.ts";
 import { isInfraLostRunFailure } from "../retry/infra-lost-retry.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
@@ -274,24 +276,26 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		}
 	}
 	if (state.finalizeFailed && workspacePath !== null) {
-		// warren-4e1c: mint the rescue-push credential immediately before the
+		// warren-4e1c/1154: mint the rescue-push credential immediately before the
 		// salvage spawn (forge-contract.md §4 — minted, never held). A mint
 		// failure is recorded and degrades to an anonymous push (which fails
 		// closed on a private repo) rather than skipping the salvage.
-		let gitToken: string | undefined;
+		let gitCredential: GitCredential | undefined;
 		if (input.forge !== undefined && project !== null) {
 			try {
-				gitToken = await mintGitCredentialSecret(input.forge, project.gitUrl);
+				gitCredential = await mintGitCredential(input.forge, project.gitUrl);
 			} catch (err) {
 				await fail("branch_push", err);
 			}
 		}
+		const originHost = project !== null ? extractGitHost(project.gitUrl) : undefined;
 		salvage = await salvageWorkspace({
 			runId: run.id,
 			workspacePath,
 			baseBranch,
 			...(input.salvageDir !== undefined ? { salvageDir: input.salvageDir } : {}),
-			...(gitToken !== undefined ? { gitToken } : {}),
+			...(gitCredential !== undefined ? { gitCredential } : {}),
+			...(originHost !== undefined ? { originHost } : {}),
 			exec,
 			fs,
 		});

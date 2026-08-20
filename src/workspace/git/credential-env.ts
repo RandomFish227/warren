@@ -1,41 +1,49 @@
 /**
- * GitHub-credential git env — the per-spawn replacement for the supervisor's
- * deleted global `insteadOf` rule (warren-5497; the old module was
- * `src/supervisor/git-credentials.ts`).
+ * Git per-spawn credential env (warren-1154 invariant fix).
  *
- * The supervisor used to install `url.https://x-access-token:<token>@github.com/
- * .insteadOf https://github.com/` into the global git config at boot — but
- * only the local topology boots through the supervisor, and a global rule has
- * no refresh point for expiring App tokens. Under `WARREN_RUNTIME=k8s` the
- * control-plane pod runs `warren serve` directly, so host-side `git clone` /
- * `fetch` / `push` against a private github.com repo died on git's interactive
- * username prompt (exit 128, "could not read Username for 'https://github.com'").
+ * Renders `GIT_CONFIG_{COUNT,KEY_0,VALUE_0}` env vars (git ≥2.31) that rewrite
+ * `https://<host>/` to `https://<username>:<secret>@<host>/` for ONE child
+ * process. No global git config is mutated, the token never appears in argv,
+ * and the clone's `origin` URL stays clean.
  *
- * This helper renders the rewrite as `GIT_CONFIG_{COUNT,KEY_0,VALUE_0}`
- * env vars (git ≥2.31), merged into a single spawn's environment via the
- * existing `SpawnOptions.env` seam:
- *
- *   - no global (or repo) git config is mutated — the rule lives and dies
- *     with the one child process;
- *   - the token never appears in argv (unlike a token-in-URL clone), so
- *     `ps` can't see it;
- *   - `insteadOf` rewrites on the wire only, so the clone's stored
- *     `origin` URL stays clean.
- *
- * Harmless on non-github.com remotes (prefix never matches).
+ * Taking `GitCredential` (which carries the provider-chosen username) plus the
+ * remote host rather than hardcoding both is the §0 fix: the domain must never
+ * name `x-access-token` or `github.com` outside `src/forge/`.
  */
 
+import type { GitCredential } from "../../forge/contract.ts";
+
 /**
- * Env overrides that let a spawned git authenticate to github.com over
- * https with `token` (GitHub's `x-access-token` app-token scheme). Empty /
- * undefined token → `{}`, so call sites can splice unconditionally and
- * public-repo behavior is untouched. Pure.
+ * Extract the HTTPS hostname from a git clone URL.
+ * - `https://github.com/o/r.git` → `"github.com"`
+ * - `git@github.com:o/r.git` → `"github.com"`
+ * - `ssh://git@github.com/o/r` → `"github.com"`
+ * Returns `undefined` for unrecognised forms.
  */
-export function githubCredentialGitEnv(token: string | undefined): Record<string, string> {
-	if (token === undefined || token === "") return {};
+export function extractGitHost(gitUrl: string): string | undefined {
+	try {
+		// Handle scp-style: git@host:path
+		const scp = /^[^@]+@([^:]+):/.exec(gitUrl);
+		if (scp !== null) return scp[1];
+		return new URL(gitUrl).hostname || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Env overrides that let a spawned git authenticate to `host` over HTTPS using
+ * `cred`. Empty/absent credential or absent host → `{}`, so call sites splice
+ * unconditionally and public-repo behavior is untouched. Pure.
+ */
+export function credentialGitEnv(
+	cred: GitCredential | undefined,
+	host: string | undefined,
+): Record<string, string> {
+	if (cred === undefined || host === undefined || cred.secret === "") return {};
 	return {
 		GIT_CONFIG_COUNT: "1",
-		GIT_CONFIG_KEY_0: `url.https://x-access-token:${token}@github.com/.insteadOf`,
-		GIT_CONFIG_VALUE_0: "https://github.com/",
+		GIT_CONFIG_KEY_0: `url.https://${cred.username}:${cred.secret}@${host}/.insteadOf`,
+		GIT_CONFIG_VALUE_0: `https://${host}/`,
 	};
 }

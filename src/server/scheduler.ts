@@ -22,11 +22,12 @@
  */
 
 import type { Repos } from "../db/repos/index.ts";
-import type { Forge } from "../forge/contract.ts";
-import { mintGitCredentialSecret } from "../forge/credentials.ts";
+import type { Forge, GitCredential } from "../forge/contract.ts";
+import { mintGitCredential } from "../forge/credentials.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { spawnRun } from "../runs/index.ts";
+import type { DispatchOrigin, SpawnRunInput } from "../runs/spawn/types.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import {
 	CronRetryTracker,
@@ -98,6 +99,46 @@ export interface BootSchedulerInput {
 	readonly clearInterval?: (handle: SchedulerTimerHandle) => void;
 }
 
+/** Writable draft of the dispatcher's {@link SpawnRunInput}. */
+type SchedulerSpawnDraft = { -readonly [K in keyof SpawnRunInput]?: SpawnRunInput[K] };
+
+/**
+ * Build spawn input for a scheduled dispatch. Linear if-chains keep this
+ * under the cognitive-complexity ceiling where conditional spreads would not.
+ */
+function buildSchedulerSpawnInput(
+	input: BootSchedulerInput,
+	args: DispatchSpawnInput,
+	gitCredential: GitCredential | undefined,
+	dispatchOrigin: DispatchOrigin,
+	seedsDeps: { sdBinary: string; spawn: SpawnFn },
+): SpawnRunInput {
+	const draft: SchedulerSpawnDraft = {
+		repos: input.repos,
+		runtimeProvider: input.runtimeProvider,
+		agentName: args.agentName,
+		projectId: args.projectId,
+		prompt: args.prompt,
+		trigger: args.trigger,
+		dispatchOrigin,
+		projectsConfig: input.projectsConfig,
+		projectSpawn: input.projectSpawn,
+		warrenConfigs: input.warrenConfigs,
+		seedsCli: seedsDeps,
+	};
+	if (args.seedId !== undefined) draft.seedId = args.seedId;
+	if (args.metadata !== undefined) draft.metadata = args.metadata;
+	if (args.maxCostUsd !== undefined) draft.maxCostUsdOverride = args.maxCostUsd;
+	if (gitCredential !== undefined) draft.gitCredential = gitCredential;
+	if (input.issueTracker !== undefined) draft.issueTracker = input.issueTracker;
+	if (args.onRowCreated !== undefined) draft.onRunRowCreated = args.onRowCreated;
+	if (input.runBranchPrefixDefault !== undefined) {
+		draft.runBranchPrefixDefault = input.runBranchPrefixDefault;
+	}
+	if (input.now !== undefined) draft.now = input.now;
+	return draft as SpawnRunInput;
+}
+
 /**
  * Construct the live scheduler with full production deps. The returned
  * handle goes on `WarrenServerHandle.stop`'s teardown chain.
@@ -106,10 +147,6 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 	const spawnRunFn = input.spawnRunFn ?? spawnRun;
 
 	const seedsDeps = { sdBinary: input.config.sdBinary, spawn: input.projectSpawn };
-	// warren-5819: hoisted so the spawn closures below stay under the
-	// cognitive-complexity ceiling.
-	const trackerOption =
-		input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {};
 
 	// warren-a0a2: one bounded-retry tracker for the scheduler's process
 	// lifetime (in-memory; a restart resets counters — see cron-retry.ts). The
@@ -131,52 +168,29 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		tracker: projectHealTracker,
 		config: input.projectsConfig,
 		spawn: input.projectSpawn,
-		mintToken: (project) => mintGitCredentialSecret(input.forge, project.gitUrl),
+		mintToken: (project) => mintGitCredential(input.forge, project.gitUrl),
 		...(input.logger !== undefined ? { logger: input.logger } : {}),
 		...(input.cloneExists !== undefined ? { exists: input.cloneExists } : {}),
 		...(input.now !== undefined ? { now: input.now } : {}),
 	});
 
-	const mintProjectGitSecret = async (projectId: string): Promise<string | undefined> => {
-		// §4 per-spawn mint: credential is minted immediately before the spawn,
-		// never captured at boot. Unowned URL / `no_credential` → undefined.
+	const mintProjectGitCredential = async (projectId: string) => {
+		// §4 per-spawn mint (warren-1154): credential is minted immediately before
+		// the spawn, never captured at boot. Unowned URL / `no_credential` → undefined.
 		const project = await input.repos.projects.get(projectId);
-		return project !== null
-			? await mintGitCredentialSecret(input.forge, project.gitUrl)
-			: undefined;
+		return project !== null ? await mintGitCredential(input.forge, project.gitUrl) : undefined;
 	};
 
 	const spawnDispatch: DispatchSpawnFn = async (
 		args: DispatchSpawnInput,
 	): Promise<DispatchSpawnResult> => {
-		const gitSecret = await mintProjectGitSecret(args.projectId);
+		const gitCredential = await mintProjectGitCredential(args.projectId);
 		// warren-9ce3: origin from the resolved trigger kind; seedId forward
 		// closes the scheduled-seed loss (was only buried in metadata).
-		const dispatchOrigin = args.trigger === "scheduled" ? "scheduled" : "cron";
-		const result = await spawnRunFn({
-			repos: input.repos,
-			runtimeProvider: input.runtimeProvider,
-			agentName: args.agentName,
-			projectId: args.projectId,
-			prompt: args.prompt,
-			trigger: args.trigger,
-			dispatchOrigin,
-			...(args.seedId !== undefined ? { seedId: args.seedId } : {}),
-			...(args.metadata !== undefined ? { metadata: args.metadata } : {}),
-			...(args.maxCostUsd !== undefined ? { maxCostUsdOverride: args.maxCostUsd } : {}),
-			projectsConfig: input.projectsConfig,
-			projectSpawn: input.projectSpawn,
-			githubToken: gitSecret,
-			warrenConfigs: input.warrenConfigs,
-			seedsCli: seedsDeps,
-			...trackerOption,
-			// warren-a0a2: forward the cron dispatcher's row-id probe.
-			...(args.onRowCreated !== undefined ? { onRunRowCreated: args.onRowCreated } : {}),
-			...(input.runBranchPrefixDefault !== undefined
-				? { runBranchPrefixDefault: input.runBranchPrefixDefault }
-				: {}),
-			...(input.now !== undefined ? { now: input.now } : {}),
-		});
+		const dispatchOrigin: DispatchOrigin = args.trigger === "scheduled" ? "scheduled" : "cron";
+		const result = await spawnRunFn(
+			buildSchedulerSpawnInput(input, args, gitCredential, dispatchOrigin, seedsDeps),
+		);
 		// Same hand-off as POST /runs — bridge so events flow into warren.events.
 		input.bridges.start(result.run.id, result.sandboxRun.id, result.sandbox.id);
 		return { runId: result.run.id };
@@ -192,7 +206,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 	const ciFixerSpawn: TickCiFixerSpawnFn = async (
 		args: TickCiFixerSpawnInput,
 	): Promise<{ runId: string }> => {
-		const gitSecret = await mintProjectGitSecret(args.projectId);
+		const ciFixerCred = await mintProjectGitCredential(args.projectId);
 		const result = await spawnRunFn({
 			repos: input.repos,
 			runtimeProvider: input.runtimeProvider,
@@ -207,10 +221,10 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			targetBranch: args.targetBranch,
 			projectsConfig: input.projectsConfig,
 			projectSpawn: input.projectSpawn,
-			githubToken: gitSecret,
+			...(ciFixerCred !== undefined ? { gitCredential: ciFixerCred } : {}),
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: seedsDeps,
-			...trackerOption,
+			...(input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {}),
 			...(input.runBranchPrefixDefault !== undefined
 				? { runBranchPrefixDefault: input.runBranchPrefixDefault }
 				: {}),

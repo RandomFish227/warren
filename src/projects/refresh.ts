@@ -24,7 +24,8 @@
  */
 
 import { existsSync } from "node:fs";
-import { githubCredentialGitEnv } from "../workspace/git/credential-env.ts";
+import type { GitCredential } from "../forge/contract.ts";
+import { credentialGitEnv } from "../workspace/git/credential-env.ts";
 import { detectProjectFeatures, type ProjectFeatureFlags } from "./capabilities.ts";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "./clone.ts";
 import type { ProjectsConfig } from "./config.ts";
@@ -62,13 +63,20 @@ export interface RefreshProjectCloneInput {
 	 */
 	readonly fetchCommit?: string;
 	/**
-	 * GitHub token for private-repo access (`GITHUB_TOKEN` at the HTTP
-	 * boundary). Applied to the `git fetch` spawn as a process-scoped
-	 * `insteadOf` rewrite (`githubCredentialGitEnv`) so a bare `warren
-	 * serve` (K8s pod, no supervisor-installed global rule) can refresh a
-	 * private clone. Absent/empty → anonymous fetch, the old behavior.
+	 * Provider-neutral git credential for private-repo access (warren-1154 —
+	 * replaces the former `token?: string` to avoid hardcoding forge-specific
+	 * values outside `src/forge/`). Applied to the `git fetch` spawn as a
+	 * process-scoped `insteadOf` rewrite (`credentialGitEnv`) so a bare
+	 * `warren serve` (K8s pod, no supervisor-installed global rule) can
+	 * refresh a private clone. Absent/empty → anonymous fetch, old behavior.
 	 */
-	readonly token?: string;
+	readonly gitCredential?: GitCredential;
+	/**
+	 * HTTPS hostname of the git remote (e.g. `"github.com"`), derived from the
+	 * project row's `gitUrl` by the caller. Paired with `gitCredential` for the
+	 * credential env. Omitted ⇒ anonymous fetch.
+	 */
+	readonly originHost?: string;
 	readonly spawn: SpawnFn;
 	readonly timeoutMs?: number;
 	readonly exists?: (path: string) => boolean;
@@ -120,8 +128,8 @@ export async function refreshProjectClone(
 		});
 	}
 
-	// No token → no `env` key, plain inheritance (see CloneProjectInput.token).
-	const credEnv = githubCredentialGitEnv(input.token);
+	// No credential → no `env` key, plain inheritance.
+	const credEnv = credentialGitEnv(input.gitCredential, input.originHost);
 	const netEnv: Pick<SpawnOptions, "env"> = Object.keys(credEnv).length > 0 ? { env: credEnv } : {};
 	// warren-232d: fetch-only mode for baseCommit dispatches. The shared host
 	// clone's HEAD is never moved — the workspace is cut at the pinned SHA

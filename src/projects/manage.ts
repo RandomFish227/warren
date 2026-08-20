@@ -35,9 +35,10 @@ import { resolve, sep } from "node:path";
 import { formatError, ValidationError } from "../core/errors.ts";
 import type { ProjectsRepo } from "../db/repos/projects.ts";
 import type { ProjectRow } from "../db/schema.ts";
-import type { Forge } from "../forge/contract.ts";
+import type { Forge, GitCredential } from "../forge/contract.ts";
 import type { BridgeLogger } from "../runs/stream/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
+import { extractGitHost } from "../workspace/git/credential-env.ts";
 import {
 	type CloneProjectResult,
 	cloneProjectRepo,
@@ -79,11 +80,11 @@ export interface AddProjectInput {
 	readonly gitUrl: string;
 	readonly defaultBranch?: string;
 	/**
-	 * GitHub token for private-repo clones (`GITHUB_TOKEN`), forwarded to
-	 * `cloneProjectRepo` — see `CloneProjectInput.token`. Absent/empty →
-	 * anonymous clone.
+	 * Provider-neutral git credential for private-repo clones (warren-1154),
+	 * forwarded to `cloneProjectRepo` — see `CloneProjectInput.gitCredential`.
+	 * Absent/empty → anonymous clone.
 	 */
-	readonly token?: string;
+	readonly gitCredential?: GitCredential;
 	readonly spawn: SpawnFn;
 	readonly timeoutMs?: number;
 	readonly now?: () => Date;
@@ -134,7 +135,7 @@ export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
 		owner: parsed.owner,
 		name: parsed.name,
 		defaultBranch: input.defaultBranch,
-		token: input.token,
+		...(input.gitCredential !== undefined ? { gitCredential: input.gitCredential } : {}),
 		spawn: input.spawn,
 		timeoutMs: input.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS,
 	});
@@ -166,10 +167,10 @@ export interface RefreshProjectInput {
 	 */
 	readonly fetchCommit?: string;
 	/**
-	 * GitHub token for private-repo fetches (`GITHUB_TOKEN`), forwarded to
-	 * `refreshProjectClone` — see `RefreshProjectCloneInput.token`.
+	 * Provider-neutral git credential for private-repo fetches (warren-1154),
+	 * forwarded to `refreshProjectClone` — see `RefreshProjectCloneInput.gitCredential`.
 	 */
-	readonly token?: string;
+	readonly gitCredential?: GitCredential;
 	readonly spawn: SpawnFn;
 	readonly timeoutMs?: number;
 	readonly now?: () => Date;
@@ -225,12 +226,14 @@ export async function refreshProject(input: RefreshProjectInput): Promise<Refres
 	input.warrenConfigs?.invalidate(id);
 
 	const refreshFn = input.refresh ?? refreshProjectClone;
+	const originHost = extractGitHost(row.gitUrl);
 	const result: RefreshProjectCloneResult = await refreshFn({
 		config,
 		localPath: row.localPath,
 		ref,
 		...(input.fetchCommit !== undefined ? { fetchCommit: input.fetchCommit } : {}),
-		token: input.token,
+		...(input.gitCredential !== undefined ? { gitCredential: input.gitCredential } : {}),
+		...(originHost !== undefined ? { originHost } : {}),
 		spawn: input.spawn,
 		timeoutMs: input.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS,
 		armHooks,
