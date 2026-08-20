@@ -336,3 +336,95 @@ describe("GitHubForge credential gating", () => {
 		expect(await forge.fetchJobLogTail(REF, "1", 10)).toEqual({ ok: true, value: null });
 	});
 });
+
+describe("GitHubForge.probeIdentity — warren-56bb §4b", () => {
+	function probeForge(response: Response) {
+		const rec = recordingFetch([response]);
+		return { forge: new GitHubForge({ token: "t", fetch: rec.fetch }), calls: rec.calls };
+	}
+
+	test("ok when x-github-request-id header is present", async () => {
+		const { forge, calls } = probeForge(
+			new Response(null, { status: 200, headers: { "x-github-request-id": "abc-123" } }),
+		);
+		const result = await forge.probeIdentity(GITHUB_API_BASE);
+		expect(result.ok).toBe(true);
+		expect(calls[0]?.url).toBe(`${GITHUB_API_BASE}/meta`);
+		expect(calls[0]?.method).toBe("GET");
+	});
+
+	test("ok when x-github-media-type header is present", async () => {
+		const { forge } = probeForge(
+			new Response(null, {
+				status: 200,
+				headers: { "x-github-media-type": "github.v3; format=json" },
+			}),
+		);
+		const result = await forge.probeIdentity(GITHUB_API_BASE);
+		expect(result.ok).toBe(true);
+	});
+
+	test("ok when both GitHub identity headers are present", async () => {
+		const { forge } = probeForge(
+			new Response(null, {
+				status: 200,
+				headers: {
+					"x-github-request-id": "abc-123",
+					"x-github-media-type": "github.v3; format=json",
+				},
+			}),
+		);
+		const result = await forge.probeIdentity(GITHUB_API_BASE);
+		expect(result.ok).toBe(true);
+	});
+
+	test("http_error when GitHub identity headers are absent (wrong forge kind)", async () => {
+		const { forge } = probeForge(new Response("not github", { status: 200 }));
+		const result = await forge.probeIdentity(GITHUB_API_BASE);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error.kind).toBe("http_error");
+			expect(result.error.detail).toContain("GitHub identity headers absent");
+		}
+	});
+
+	test("http_error carries the response status when probe returns non-200 without headers", async () => {
+		const { forge } = probeForge(new Response("gitea style", { status: 404 }));
+		const result = await forge.probeIdentity(GITHUB_API_BASE);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error.kind).toBe("http_error");
+			expect(result.error.status).toBe(404);
+		}
+	});
+
+	test("network error when fetch throws", async () => {
+		const throwingFetch = (() => {
+			throw new Error("connection refused");
+		}) as unknown as typeof fetch;
+		const forge = new GitHubForge({ token: "t", fetch: throwingFetch });
+		const result = await forge.probeIdentity(GITHUB_API_BASE);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error.kind).toBe("network");
+			expect(result.error.detail).toContain("connection refused");
+		}
+	});
+
+	test("probe URL is baseUrl/meta, not the tokenized API base", async () => {
+		const { forge, calls } = probeForge(
+			new Response(null, { status: 200, headers: { "x-github-request-id": "x" } }),
+		);
+		const gheBase = "https://git.example.com/api/v3";
+		await forge.probeIdentity(gheBase);
+		expect(calls[0]?.url).toBe(`${gheBase}/meta`);
+	});
+
+	test("probe request carries no Authorization header (unauthenticated)", async () => {
+		const { forge, calls } = probeForge(
+			new Response(null, { status: 200, headers: { "x-github-request-id": "x" } }),
+		);
+		await forge.probeIdentity(GITHUB_API_BASE);
+		expect(calls[0]?.headers.authorization).toBeUndefined();
+	});
+});

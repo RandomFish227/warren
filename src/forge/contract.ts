@@ -249,4 +249,21 @@ export interface Forge {
 	 * authorship are separate concerns on every forge (§6.8).
 	 */
 	botIdentity(): Promise<ForgeResult<GitIdentity>>;
+
+	/**
+	 * Validate that the software at `baseUrl` is the forge kind this provider
+	 * implements (multi-forge-support.md §4b — warren-56bb). Called once at
+	 * forge-instance registration; never at project creation (§4b splits those
+	 * two checks). Returns ok(undefined) when the probe confirms the kind;
+	 * ForgeError when the host does not match (http_error / identity_mismatch),
+	 * is unreachable (network), or returns an unexpected response.
+	 *
+	 * FakeForge satisfies this by owning the `fake://` scheme and checking the
+	 * URL prefix without a network call. GitHubForge probes GET
+	 * `${baseUrl}/meta` unauthenticated and asserts GitHub-specific headers.
+	 * The probe is strictly a validation of what KIND of software answers —
+	 * not an authorization check (§4b: "a version string is not an
+	 * authorization check").
+	 */
+	probeIdentity(baseUrl: string): Promise<ForgeResult<void>>;
 }

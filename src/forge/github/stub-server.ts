@@ -146,6 +146,16 @@ export function stubGitHubServer(): { fetch: typeof fetch } {
 		const url = new URL(raw);
 		const method = (init?.method ?? "GET").toUpperCase();
 		const parts = url.pathname.split("/").filter((p) => p !== "");
+		// Identity probe endpoint (warren-56bb §4b): GET /meta → 200 with GitHub headers.
+		if (parts[0] === "meta" && method === "GET") {
+			return new Response(null, {
+				status: 200,
+				headers: {
+					"x-github-request-id": "stub-probe-id",
+					"x-github-media-type": "github.v3; format=json",
+				},
+			});
+		}
 		if (parts[0] !== "repos" || parts.length < 3) {
 			return jsonResponse(404, { message: `stub: unrouted ${method} ${url.pathname}` });
 		}

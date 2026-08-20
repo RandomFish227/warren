@@ -179,7 +179,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 
 	const autoOpenPr = loadAutoOpenPrConfigFromEnv(env);
 	// warren-f012: resolve forge from [[forges]] config block when present; falls back to WARREN_FORGE.
-	const forge = resolveForgeFromConfig(fileConfig.config.forges, env);
+	// warren-56bb: resolveForgeFromConfig now runs identity probes for config-driven instances.
+	const forge = await resolveForgeFromConfig(fileConfig.config.forges, env);
 	const gitHubAppRegistration = bootGitHubAppRegistrationGate(env, logger);
 
 	const warrenConfigs = createWarrenConfigCache();
