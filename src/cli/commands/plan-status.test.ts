@@ -39,6 +39,7 @@ function planRunRow(over: Partial<PlanRunRow> = {}): PlanRunRow {
 	return {
 		id: "pr-1",
 		planId: "pl-abc",
+		source: "plan",
 		projectId: "prj_1",
 		agentName: "claude-code",
 		promptTemplate: "",
@@ -105,6 +106,7 @@ function runRow(over: Partial<RunRow> = {}): RunRow {
 		targetBranch: null,
 		ref: null,
 		provider: null,
+		baseCommit: null,
 		model: null,
 		salvageRef: null,
 		salvagePath: null,

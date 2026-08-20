@@ -78,6 +78,8 @@ export interface BootServerOptions {
 	readonly defaultUiDistDir?: string;
 	/** Override `Date.now()` for deterministic tests. */
 	readonly now?: () => Date;
+	/** warren-53ea: boot-wired IssueTracker override; pass it ALREADY-CONNECTED. */
+	readonly issueTracker?: import("../../tracker/contract.ts").IssueTracker;
 }
 
 export interface WarrenServerHandle extends ServeHandle {
@@ -195,16 +197,15 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// Seeds-CLI seam shared by the bridge reap path (warren-41d5) and the plan-run coordinator.
 	const schedulerConfig = loadTriggerSchedulerConfigFromEnv(env);
 	const seedsCli = { sdBinary: schedulerConfig.sdBinary, spawn: defaultSpawn };
-	// warren-5819 (pl-a37b Track B step 7): the same pair wraps into ONE
-	// SeedsTracker, threaded through every seedsCli fan-out site below and
-	// onto ServerDeps. Call sites still read the facade — the contract port
-	// is warren-2d98/47b0/6234.
-	const issueTracker = new SeedsTracker(seedsCli);
+	// warren-5819 (pl-a37b Track B step 7): ONE SeedsTracker threaded through
+	// every seedsCli fan-out site below and onto ServerDeps. Contract port:
+	// warren-2d98/47b0/6234; override seam: warren-53ea (BootServerOptions).
+	const issueTracker = opts.issueTracker ?? new SeedsTracker(seedsCli);
 
 	// Tier-1 observation bus (warren-bb60) + first-party consumers (warren-4e74 healer,
 	// warren-df3e seed-close). Installed BEFORE bridges resume in-flight runs so no emit
 	// is dropped (see lifecycle-bus-wiring.ts). warren-3bc6: `forge` is the boot-resolved instance.
-	const lifecycleBusHandle = bootLifecycleBus({ logger, repos, seedsCli, broker, forge });
+	const lifecycleBusHandle = bootLifecycleBus({ logger, repos, issueTracker, broker, forge });
 
 	// K8s runtime background loops (pl-829f step 25 / warren-7c30); undefined under the
 	// default `local` backend. warren-c531: booted HERE (before `bootBridges`).

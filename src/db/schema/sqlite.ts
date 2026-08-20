@@ -42,6 +42,7 @@ import {
 	INBOX_STATES,
 	INDEX_NAMES,
 	PLAN_RUN_CHILD_STATES,
+	PLAN_RUN_SOURCES,
 	PLAN_RUN_STATES,
 	PREVIEW_STATES,
 	PULL_REQUEST_LIFECYCLES,
@@ -165,6 +166,10 @@ export const runs = sqliteTable(
 		// run projections can echo what a ref-pinned dispatch took. Null = the
 		// run dispatched against the resolved default/continuation base.
 		ref: text("ref"),
+		// Base-commit pinning (warren-aaf7): a 40-hex commit SHA the workspace is
+		// cut at, SPLIT from `ref` (which stays branch-shaped and feeds the PR
+		// base). Null = the workspace cut follows `ref`/continuation/default.
+		baseCommit: text("base_commit"),
 		// Salvage-before-destroy (warren-cd3b). When a reap's branch push never
 		// landed, the workspace's committed work is captured BEFORE destroy:
 		// `salvage_ref` is the rescue branch pushed to origin
@@ -351,7 +356,9 @@ export const planRuns = sqliteTable(
 	TABLE_NAMES.planRuns,
 	{
 		id: text("id").primaryKey(),
-		planId: text("plan_id").notNull(),
+		planId: text("plan_id"),
+		// warren-de42: 'plan' (classic plan id) | 'issues' (explicit ordered issue-id list).
+		source: text("source", { enum: PLAN_RUN_SOURCES }).notNull().default("plan"),
 		projectId: text("project_id")
 			.notNull()
 			.references(() => projects.id, { onDelete: "cascade" }),
@@ -379,10 +386,9 @@ export const planRuns = sqliteTable(
 		createdAt: text("created_at").notNull(),
 		startedAt: text("started_at"),
 		endedAt: text("ended_at"),
-		// warren-1eff: last same-row resume time. The merge-wait clock
-		// derives from the later of the producing run's endedAt and this
-		// stamp, so a resume re-arms the budget instead of instantly
-		// re-timing out on the stale run.endedAt. Null until first resume.
+		// warren-1eff: last same-row resume time. The merge-wait clock derives
+		// from the later of endedAt and this stamp, so a resume re-arms the
+		// budget instead of re-timing out on the stale run.endedAt.
 		resumedAt: text("resumed_at"),
 	},
 	(t) => [

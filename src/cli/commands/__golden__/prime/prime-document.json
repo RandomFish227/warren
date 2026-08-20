@@ -49,6 +49,10 @@
           "description": "link the run to a seeds issue (POST /runs seedId)"
         },
         {
+          "flags": "--base-commit <sha>",
+          "description": "pin the workspace cut to a 40-hex commit SHA"
+        },
+        {
           "flags": "--url <url>",
           "description": "warren server base URL (env WARREN_BASE_URL)"
         },
@@ -172,6 +176,10 @@
         {
           "flags": "--agent <name>",
           "description": "registered agent name"
+        },
+        {
+          "flags": "--issues <ids>",
+          "description": "comma-separated ordered issue-id list (plan-run without a plan-capable tracker)"
         },
         {
           "flags": "--prompt-template <text>",

@@ -68,6 +68,7 @@ warren run [options] <agent> <project>
 | `--model <name>` |  |  | per-run override of agent frontmatter.model |
 | `--max-cost-usd <usd>` |  |  | per-run USD spend cap; wins over the agent's own and the project default |
 | `--seed <id>` |  |  | link the run to a seeds issue (POST /runs seedId) |
+| `--base-commit <sha>` |  |  | pin the workspace cut to a 40-hex commit SHA |
 | `--url <url>` |  |  | warren server base URL (env WARREN_BASE_URL) |
 | `--token <token>` |  |  | bearer token (env WARREN_API_TOKEN) |
 
@@ -166,17 +167,18 @@ warren plan [options] [command]
 dispatch a serial plan-run against a remote warren and tail events as NDJSON
 
 ```bash
-warren plan run [options] <plan-id>
+warren plan run [options] [plan-id]
 ```
 
 | Argument | Required | Description |
 | --- | --- | --- |
-| `<plan-id>` | yes | seeds plan id (pl_xxx) |
+| `[plan-id]` |  | seeds plan id (pl_xxx); mutually exclusive with --issues |
 
 | Flag | Required | Default | Description |
 | --- | --- | --- | --- |
 | `--project <id>` | yes |  | project id (prj_xxx) |
 | `--agent <name>` | yes |  | registered agent name |
+| `--issues <ids>` |  |  | comma-separated ordered issue-id list (plan-run without a plan-capable tracker) |
 | `--prompt-template <text>` |  |  | per-child prompt template override |
 | `--ref <git-ref>` |  |  | git ref to clone child workspaces from |
 | `--provider <name>` |  |  | per-run override of agent frontmatter.provider |

@@ -32,8 +32,8 @@ import {
 import { buildPrContent } from "../../runs/pr.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
-import { showSeed } from "../../seeds-cli/index.ts";
 import type { IssueTracker } from "../../tracker/contract.ts";
+import { SeedsTracker } from "../../tracker/seeds-tracker.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { EnvLike } from "../config.ts";
 import type { BridgeRegistry, Logger } from "../types.ts";
@@ -124,8 +124,11 @@ function createReopenPr(
 
 type CloseChildSeedDeps = Pick<
 	PlanRunWiringInput,
-	"forge" | "repos" | "projectsConfig" | "seedsCli" | "projectSpawn" | "logger"
->;
+	"forge" | "repos" | "projectsConfig" | "projectSpawn" | "logger"
+> & {
+	/** warren-6234: the close runs through the tracker seam. */
+	readonly issueTracker: IssueTracker;
+};
 
 /**
  * Build the host-side child-seed close seam (warren-3806). Fired the instant
@@ -135,11 +138,18 @@ type CloseChildSeedDeps = Pick<
  * the plan keeps advancing (mirrors the Plot auto-done hook's tolerance).
  */
 function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSeedFn {
-	const { forge, repos, projectsConfig, seedsCli, projectSpawn, logger } = deps;
+	const { forge, repos, projectsConfig, issueTracker, projectSpawn, logger } = deps;
 	return async ({ planRun, child }) => {
 		try {
 			const project = await repos.projects.get(planRun.projectId);
-			if (project === null || !project.hasSeeds) return;
+			if (project === null) return;
+			// warren-53ea: the hasSeeds gate applies only to a GIT-NATIVE tracker
+			// (seeds state lives in the clone). A non-git-native tracker closes
+			// through its host API — closeMergedChildSeed's isGitNative arm — and
+			// needs no clone state at all. Gating it on hasSeeds would suppress
+			// the close entirely for tracker-served projects (caught by
+			// acceptance scenario 43).
+			if (issueTracker.capabilities.isGitNative && !project.hasSeeds) return;
 			// warren-63e7: mint the fetch/push credential from the forge
 			// immediately before the git spawns (forge-contract.md §4 — minted,
 			// never held) instead of reading a boot-captured env.GITHUB_TOKEN.
@@ -149,7 +159,8 @@ function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSe
 				projectPath: project.localPath,
 				defaultBranch: project.defaultBranch,
 				seedId: child.seedId,
-				seedsCli,
+				projectId: planRun.projectId,
+				issueTracker,
 				spawn: projectSpawn,
 				gitBinary: projectsConfig.gitBinary,
 				// Minted per close so the fetch/push work against private repos
@@ -220,9 +231,14 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 	const planRunCoordinatorConfig = loadPlanRunCoordinatorConfigFromEnv(env);
 	const planRunCoordinator = bootPlanRunCoordinator({
 		repos,
-		showSeed: async (projectId, seedId) => {
+		// warren-2d98: the coordinator's issue reads bind from the tracker
+		// seam — boot always wires a SeedsTracker, and the fallback keeps
+		// direct constructions of this wiring (tests) working when only the
+		// legacy facade is supplied.
+		getIssue: async (projectId, issueId) => {
 			const project = await repos.projects.require(projectId);
-			return showSeed(seedsCli, project.localPath, seedId);
+			const tracker = issueTracker ?? new SeedsTracker(seedsCli);
+			return tracker.getIssue({ projectId, localPath: project.localPath }, issueId);
 		},
 		// warren-63e7: the merge gate consumes the boot-resolved forge — no
 		// closure-captured token can ride a multi-hour poll loop anymore.
@@ -232,7 +248,8 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 			forge,
 			repos,
 			projectsConfig,
-			seedsCli,
+			// warren-6234: the child-seed close runs through the tracker seam.
+			issueTracker: issueTracker ?? new SeedsTracker(seedsCli),
 			projectSpawn,
 			logger,
 		}),

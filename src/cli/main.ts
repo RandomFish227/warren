@@ -19,7 +19,6 @@
  */
 
 import { Command, CommanderError } from "commander";
-import { PLAN_RUN_STATES, type PlanRunState } from "../core/wire.ts";
 import { openDatabase } from "../db/client.ts";
 import { parseDatabaseUrl } from "../db/url.ts";
 import { VERSION } from "../index.ts";
@@ -37,7 +36,13 @@ import { runProjects } from "./commands/projects.ts";
 import { runRun } from "./commands/run.ts";
 import { runServe } from "./commands/serve.ts";
 import { withCliDb } from "./context.ts";
-import { parseMaxCostUsd, resolveCliExitCode } from "./flags.ts";
+import {
+	parseIssueList,
+	parseMaxCostUsd,
+	parsePlanRunOutput,
+	parsePlanRunState,
+	resolveCliExitCode,
+} from "./flags.ts";
 import {
 	type CliContext,
 	defaultSpawn,
@@ -49,7 +54,6 @@ import {
 	PROCESS_STDIO,
 	parseOutputMode,
 } from "./output.ts";
-import type { PlanRunOutput } from "./plan-run-renderer.ts";
 import { registerRunCommands } from "./register-run-commands.ts";
 
 export function buildProgram(baseContext: CliContext): Command {
@@ -130,7 +134,8 @@ export function buildProgram(baseContext: CliContext): Command {
 				"per-run USD spend cap; wins over the agent's own and the project default",
 				parseMaxCostUsd,
 			)
-			.option("--seed <id>", "link the run to a seeds issue (POST /runs seedId)"),
+			.option("--seed <id>", "link the run to a seeds issue (POST /runs seedId)")
+			.option("--base-commit <sha>", "pin the workspace cut to a 40-hex commit SHA"),
 	).action(
 		async (
 			agent: string,
@@ -142,6 +147,7 @@ export function buildProgram(baseContext: CliContext): Command {
 				model?: string;
 				maxCostUsd?: number;
 				seed?: string;
+				baseCommit?: string;
 			} & RemoteOpts,
 		) => {
 			const client = resolveWarrenClient(context.env, clientFlags(opts));
@@ -157,6 +163,7 @@ export function buildProgram(baseContext: CliContext): Command {
 					...(opts.model !== undefined ? { modelOverride: opts.model } : {}),
 					...(opts.maxCostUsd !== undefined ? { maxCostUsd: opts.maxCostUsd } : {}),
 					...(opts.seed !== undefined ? { seedId: opts.seed } : {}),
+					...(opts.baseCommit !== undefined ? { baseCommit: opts.baseCommit } : {}),
 				},
 			);
 			process.exit(result.exitCode);
@@ -325,9 +332,14 @@ export function buildProgram(baseContext: CliContext): Command {
 		planGroup
 			.command("run")
 			.description("dispatch a serial plan-run against a remote warren and tail events as NDJSON")
-			.argument("<plan-id>", "seeds plan id (pl_xxx)")
+			.argument("[plan-id]", "seeds plan id (pl_xxx); mutually exclusive with --issues")
 			.requiredOption("--project <id>", "project id (prj_xxx)")
 			.requiredOption("--agent <name>", "registered agent name")
+			.option(
+				"--issues <ids>",
+				"comma-separated ordered issue-id list (plan-run without a plan-capable tracker)",
+				parseIssueList,
+			)
 			.option("--prompt-template <text>", "per-child prompt template override")
 			.option("--ref <git-ref>", "git ref to clone child workspaces from")
 			.option("--provider <name>", "per-run override of agent frontmatter.provider")
@@ -341,10 +353,11 @@ export function buildProgram(baseContext: CliContext): Command {
 			.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson"),
 	).action(
 		async (
-			planId: string,
+			planId: string | undefined,
 			opts: {
 				project: string;
 				agent: string;
+				issues?: string[];
 				promptTemplate?: string;
 				ref?: string;
 				provider?: string;
@@ -359,7 +372,8 @@ export function buildProgram(baseContext: CliContext): Command {
 				context,
 				{ client },
 				{
-					planId,
+					...(planId !== undefined && planId !== "" ? { planId } : {}),
+					...(opts.issues !== undefined ? { issues: opts.issues } : {}),
 					project: opts.project,
 					agent: opts.agent,
 					follow: opts.follow,
@@ -458,22 +472,6 @@ export function buildProgram(baseContext: CliContext): Command {
 		});
 
 	return program;
-}
-
-/** Coerce a `--output` flag value to a {@link PlanRunOutput}, defaulting `ndjson`. */
-export function parsePlanRunOutput(value: string | undefined): PlanRunOutput {
-	return value === "pretty" ? "pretty" : "ndjson";
-}
-
-/**
- * Coerce a `--state` flag value to a {@link PlanRunState}, or undefined when
- * unset/invalid. Membership is tested against the canonical tuple rather than
- * a locally rebuilt `Set` — that copy was drift waiting to happen (warren-d371).
- */
-export function parsePlanRunState(value: string | undefined): PlanRunState | undefined {
-	return value !== undefined && (PLAN_RUN_STATES as readonly string[]).includes(value)
-		? (value as PlanRunState)
-		: undefined;
 }
 
 if (import.meta.main) {

@@ -43,6 +43,7 @@ import {
 	INBOX_STATES,
 	INDEX_NAMES,
 	PLAN_RUN_CHILD_STATES,
+	PLAN_RUN_SOURCES,
 	PLAN_RUN_STATES,
 	PREVIEW_STATES,
 	PULL_REQUEST_LIFECYCLES,
@@ -112,6 +113,8 @@ export const runs = pgTable(
 		targetBranch: text("target_branch"),
 		// Dispatch-supplied clone ref (warren-afeb); see the sqlite schema comment.
 		ref: text("ref"),
+		// Base-commit pinning (warren-aaf7); see the sqlite schema comment.
+		baseCommit: text("base_commit"),
 		// Salvage-before-destroy (warren-cd3b); see the sqlite schema comment.
 		salvageRef: text("salvage_ref"),
 		salvagePath: text("salvage_path"),
@@ -216,7 +219,9 @@ export const planRuns = pgTable(
 	TABLE_NAMES.planRuns,
 	{
 		id: text("id").primaryKey(),
-		planId: text("plan_id").notNull(),
+		planId: text("plan_id"),
+		// Mirror of sqlite plan_runs.source (warren-de42): 'plan' | 'issues'.
+		source: text("source", { enum: PLAN_RUN_SOURCES }).notNull().default("plan"),
 		projectId: text("project_id")
 			.notNull()
 			.references(() => projects.id, { onDelete: "cascade" }),
