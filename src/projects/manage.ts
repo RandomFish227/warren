@@ -38,13 +38,13 @@ import type { ProjectRow } from "../db/schema.ts";
 import type { Forge, GitCredential } from "../forge/contract.ts";
 import type { BridgeLogger } from "../runs/stream/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
+import { extractGitHost } from "../workspace/git/credential-env.ts";
 import {
 	type CloneProjectResult,
 	cloneProjectRepo,
 	DEFAULT_GIT_TIMEOUT_MS,
 	type SpawnFn,
 } from "./clone.ts";
-import { extractGitHost } from "../workspace/git/credential-env.ts";
 import type { ProjectsConfig } from "./config.ts";
 import { ProjectUnavailableError } from "./errors.ts";
 import { assertGitUrlAllowlisted, type PublicAllowlist } from "./public-allowlist.ts";

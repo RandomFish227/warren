@@ -225,6 +225,21 @@ export interface CreateInfraLostRetryHookInput {
 }
 
 /**
+ * warren-1154: mint a fresh credential per retry (forge-contract.md §4 —
+ * minted, never held). Returns undefined on missing forge or no_credential.
+ * Extracted to keep the hook closure under the complexity ceiling.
+ */
+async function mintRetryCredential(
+	input: CreateInfraLostRetryHookInput,
+	projectId: string,
+): Promise<GitCredential | undefined> {
+	if (input.forge === undefined) return undefined;
+	const project = await input.repos.projects.get(projectId);
+	if (project === null) return undefined;
+	return mintGitCredential(input.forge, project.gitUrl).catch(() => undefined);
+}
+
+/**
  * Build the run-level infra-lost retry hook. The returned closure loads the
  * run, narrows against {@link decideInfraLostRetry}, re-dispatches the same
  * agent/project/prompt/seed with the remaining budget on the override slot,
@@ -265,16 +280,10 @@ export function createInfraLostRetryHook(input: CreateInfraLostRetryHookInput): 
 		const projectId = run.projectId;
 		if (projectId === null) return;
 		try {
-			// warren-1154: mint a fresh credential per retry (forge-contract.md §4 —
-			// minted, never held). Omit on missing forge or a no_credential forge response.
-			let gitCredential: GitCredential | undefined;
-			if (input.forge !== undefined && run.projectId !== null) {
-				const project = await input.repos.projects.get(run.projectId);
-				if (project !== null) {
-					gitCredential = await mintGitCredential(input.forge, project.gitUrl).catch(() => undefined);
-				}
-			}
-			const result = await spawnRunFn(buildRetrySpawnInput(input, run, projectId, decision, gitCredential));
+			const gitCredential = await mintRetryCredential(input, projectId);
+			const result = await spawnRunFn(
+				buildRetrySpawnInput(input, run, projectId, decision, gitCredential),
+			);
 			input.bridges.start(result.run.id, result.sandboxRun.id, result.sandbox.id, run.mode);
 			// Linkage in both directions so an operator tailing either run can
 			// follow the chain (warren-4af7).

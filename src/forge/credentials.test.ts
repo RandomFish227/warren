@@ -35,8 +35,8 @@ describe("mintGitCredential", () => {
 				ok: false,
 				error: { kind: "network", detail: "boom" },
 			});
-		await expect(
-			mintGitCredential(forge, "https://github.com/x/y.git"),
-		).rejects.toBeInstanceOf(GitCredentialMintError);
+		await expect(mintGitCredential(forge, "https://github.com/x/y.git")).rejects.toBeInstanceOf(
+			GitCredentialMintError,
+		);
 	});
 });

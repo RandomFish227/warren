@@ -17,7 +17,9 @@ describe("credentialGitEnv", () => {
 	});
 
 	test("empty secret → empty overrides", () => {
-		expect(credentialGitEnv({ username: "x-access-token", secret: "", expiresAt: null }, "github.com")).toEqual({});
+		expect(
+			credentialGitEnv({ username: "x-access-token", secret: "", expiresAt: null }, "github.com"),
+		).toEqual({});
 	});
 
 	test("undefined host → empty overrides", () => {

@@ -24,8 +24,8 @@
  * operator-visible instead of silent.
  */
 
-import { rescueBranchFor, salvageBundlePath } from "../../runtime/salvage.ts";
 import type { GitCredential } from "../../forge/contract.ts";
+import { rescueBranchFor, salvageBundlePath } from "../../runtime/salvage.ts";
 import { credentialGitEnv } from "../../workspace/git/credential-env.ts";
 import type { ReapExec, ReapFs } from "./types.ts";
 

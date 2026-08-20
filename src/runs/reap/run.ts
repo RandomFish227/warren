@@ -1,8 +1,8 @@
 import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/schema.ts";
 import type { GitCredential } from "../../forge/contract.ts";
 import { mintGitCredential } from "../../forge/credentials.ts";
-import { extractGitHost } from "../../workspace/git/credential-env.ts";
 import type { RunHandle, RuntimeProvider, WorkspaceInfo } from "../../runtime/contract.ts";
+import { extractGitHost } from "../../workspace/git/credential-env.ts";
 import { lifecycleBus } from "../lifecycle-bus.ts";
 import { isInfraLostRunFailure } from "../retry/infra-lost-retry.ts";
 import { bindBridgeLogger } from "../stream/index.ts";

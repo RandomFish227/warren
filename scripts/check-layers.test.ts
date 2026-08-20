@@ -278,8 +278,7 @@ describe("scan — the widened scripts/ walk (warren-c042)", () => {
 	test("flags a github.com literal in scripts/ outside the allow list", () => {
 		withFixtureRepo(
 			{
-				"scripts/deploy-helper.ts":
-					'const BASE = "https://api.github.com/repos/o/r";\n',
+				"scripts/deploy-helper.ts": 'const BASE = "https://api.github.com/repos/o/r";\n',
 			},
 			(dir) => {
 				expect(scan(dir, RULES).map((v) => v.rule)).toEqual(["github-api-literal-is-forge-only"]);
@@ -290,8 +289,7 @@ describe("scan — the widened scripts/ walk (warren-c042)", () => {
 	test("the forge literal rule spares source-level comments in scripts/", () => {
 		withFixtureRepo(
 			{
-				"scripts/deploy-helper.ts":
-					" * hits the `api.github.com` check-runs endpoint\n",
+				"scripts/deploy-helper.ts": " * hits the `api.github.com` check-runs endpoint\n",
 			},
 			(dir) => {
 				expect(scan(dir, RULES)).toEqual([]);

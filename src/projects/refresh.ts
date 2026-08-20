@@ -25,7 +25,7 @@
 
 import { existsSync } from "node:fs";
 import type { GitCredential } from "../forge/contract.ts";
-import { credentialGitEnv, extractGitHost } from "../workspace/git/credential-env.ts";
+import { credentialGitEnv } from "../workspace/git/credential-env.ts";
 import { detectProjectFeatures, type ProjectFeatureFlags } from "./capabilities.ts";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "./clone.ts";
 import type { ProjectsConfig } from "./config.ts";

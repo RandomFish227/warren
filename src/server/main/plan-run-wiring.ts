@@ -13,7 +13,6 @@
 import type { Repos } from "../../db/repos/index.ts";
 import type { Forge } from "../../forge/contract.ts";
 import { mintGitCredential } from "../../forge/credentials.ts";
-import { extractGitHost } from "../../workspace/git/credential-env.ts";
 import {
 	bootPlanRunCoordinator,
 	type CoordinatorCloseChildSeedFn,
@@ -36,6 +35,7 @@ import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { IssueTracker } from "../../tracker/contract.ts";
 import { SeedsTracker } from "../../tracker/seeds-tracker.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
+import { extractGitHost } from "../../workspace/git/credential-env.ts";
 import type { EnvLike } from "../config.ts";
 import type { BridgeRegistry, Logger } from "../types.ts";
 import { planRunLoggerFromPino } from "./logging.ts";
