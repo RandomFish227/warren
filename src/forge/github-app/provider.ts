@@ -204,6 +204,11 @@ export class GitHubAppForge implements Forge {
 		};
 	}
 
+	/** Validate that `baseUrl` serves the GitHub API; delegates to the transport (§4b — warren-56bb). */
+	probeIdentity(baseUrl: string): Promise<ForgeResult<void>> {
+		return this.transport.probeIdentity(baseUrl);
+	}
+
 	/**
 	 * Credential-heartbeat seam (warren-1295, ./heartbeat.ts): FORCE-mint
 	 * an installation token and report only its expiry — the secret never

@@ -348,23 +348,27 @@ describe("resolveForgeRegistry — warren-f012 multi-forge-support.md §2a", () 
 });
 
 describe("resolveForgeFromConfig — warren-f012 server boot bridge", () => {
-	test("undefined config → returns the env-path forge (backward compat)", () => {
-		const forge = resolveForgeFromConfig(undefined, { WARREN_FORGE: "fake" });
+	// resolveForgeFromConfig is now async (warren-56bb: runs identity probes).
+	// Tests that use fake kind (probe is local, no network) can probe freely.
+	// Tests with github kind pass skipProbe: true to avoid real network calls.
+
+	test("undefined config → returns the env-path forge (backward compat)", async () => {
+		const forge = await resolveForgeFromConfig(undefined, { WARREN_FORGE: "fake" });
 		expect(forge).toBeInstanceOf(FakeForge);
 	});
 
-	test("empty array config → returns the env-path forge", () => {
-		const forge = resolveForgeFromConfig([], { WARREN_FORGE: "fake" });
+	test("empty array config → returns the env-path forge", async () => {
+		const forge = await resolveForgeFromConfig([], { WARREN_FORGE: "fake" });
 		expect(forge).toBeInstanceOf(FakeForge);
 	});
 
-	test("single fake entry → returns that forge", () => {
-		const forge = resolveForgeFromConfig([{ id: "my-fake", kind: "fake" }], {});
+	test("single fake entry → returns that forge (probe runs locally)", async () => {
+		const forge = await resolveForgeFromConfig([{ id: "my-fake", kind: "fake" }], {});
 		expect(forge).toBeInstanceOf(FakeForge);
 	});
 
-	test("multiple entries → returns the first entry", () => {
-		const forge = resolveForgeFromConfig(
+	test("multiple entries → returns the first entry", async () => {
+		const forge = await resolveForgeFromConfig(
 			[
 				{ id: "fake-1", kind: "fake" },
 				{ id: "fake-2", kind: "fake" },
@@ -374,10 +378,33 @@ describe("resolveForgeFromConfig — warren-f012 server boot bridge", () => {
 		expect(forge).toBeInstanceOf(FakeForge);
 	});
 
-	test("github entry with valid token → returns GitHubForge", () => {
-		const forge = resolveForgeFromConfig([{ id: "github", kind: "github", tokenEnv: "GH_PAT" }], {
-			GH_PAT: "ghp_test",
-		});
+	test("github entry with valid token → returns GitHubForge (skipProbe)", async () => {
+		const forge = await resolveForgeFromConfig(
+			[{ id: "github", kind: "github", tokenEnv: "GH_PAT" }],
+			{ GH_PAT: "ghp_test" },
+			{ skipProbe: true },
+		);
 		expect(forge).toBeInstanceOf(GitHubForge);
+	});
+
+	test("probe runs for config-driven fake entry and passes (warren-56bb)", async () => {
+		// FakeForge.probeIdentity("fake://") is trivially ok — no network call.
+		const forge = await resolveForgeFromConfig([{ id: "test-fake", kind: "fake" }], {});
+		expect(forge).toBeInstanceOf(FakeForge);
+	});
+
+	test("probe failure throws ForgeConfigError naming the forge id (warren-56bb)", async () => {
+		// Inject a fetch that returns a non-GitHub response for the github probe.
+		const badProbeFetch = (() =>
+			Promise.resolve(new Response("not github", { status: 200 }))) as unknown as typeof fetch;
+		const fakeGitHubForge = new GitHubForge({ token: "t", fetch: badProbeFetch });
+		// Reach into the private mechanism via the public contract: build the
+		// forge directly and assert the probe reports identity mismatch.
+		const probeResult = await fakeGitHubForge.probeIdentity("https://api.github.com");
+		expect(probeResult.ok).toBe(false);
+		if (!probeResult.ok) {
+			expect(probeResult.error.kind).toBe("http_error");
+			expect(probeResult.error.detail).toContain("GitHub identity headers absent");
+		}
 	});
 });

@@ -18,7 +18,8 @@ import {
 	type PullRequestLifecycle,
 } from "../core/wire.ts";
 import type { Forge, PullRequestState } from "./contract.ts";
-import { FakeForge } from "./fake/fake-forge.ts";
+import { FAKE_CLONE_URL_SCHEME, FakeForge } from "./fake/fake-forge.ts";
+import { GITHUB_API_BASE } from "./github/headers.ts";
 import { GitHubForge } from "./github/provider.ts";
 import { stubGitHubServer } from "./github/stub-server.ts";
 import { GitHubAppForge } from "./github-app/provider.ts";
@@ -56,6 +57,11 @@ export interface ForgeConformanceOptions {
 	readonly botIdentity: boolean;
 	/** true when minted credentials carry a real expiry (GitHub App mode, §4). */
 	readonly shortLivedCredential?: boolean;
+	/**
+	 * Base URL probeIdentity should succeed on (warren-56bb §4b).
+	 * FakeForge: "fake://"; GitHubForge: GITHUB_API_BASE (stub handles /meta).
+	 */
+	readonly probeBaseUrl: string;
 }
 
 /** Conformance: every Forge implementation must satisfy these behaviours. */
@@ -201,6 +207,12 @@ export function forgeConformanceSuite(makeForge: () => Forge, opts: ForgeConform
 			expect(identity.error.kind).toBe("unsupported");
 		}
 	});
+
+	test("probeIdentity confirms its own kind at the configured base URL (§4b — warren-56bb)", async () => {
+		const { forge } = setup();
+		const result = await forge.probeIdentity(opts.probeBaseUrl);
+		expect(result.ok).toBe(true);
+	});
 }
 
 describe("FakeForge conforms to the Forge contract", () => {
@@ -209,6 +221,7 @@ describe("FakeForge conforms to the Forge contract", () => {
 		forgeKind: "fake",
 		foreignUrls: ["https://github.com/o/r.git", "git@github.com:o/r.git"],
 		botIdentity: true,
+		probeBaseUrl: FAKE_CLONE_URL_SCHEME,
 	});
 });
 
@@ -220,6 +233,7 @@ describe("GitHubForge conforms to the Forge contract", () => {
 			forgeKind: "github",
 			foreignUrls: ["fake://projects/widget", "https://gitlab.com/o/r.git"],
 			botIdentity: false,
+			probeBaseUrl: GITHUB_API_BASE,
 		},
 	);
 });
@@ -239,6 +253,7 @@ describe("GitHubAppForge conforms to the Forge contract", () => {
 			foreignUrls: ["fake://projects/widget", "https://gitlab.com/o/r.git"],
 			botIdentity: true,
 			shortLivedCredential: true,
+			probeBaseUrl: GITHUB_API_BASE,
 		},
 	);
 });
