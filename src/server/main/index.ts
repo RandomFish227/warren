@@ -16,7 +16,7 @@ import { isTerminalRunState } from "../../core/wire.ts";
 import { openDatabase } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { createRepos } from "../../db/repos/index.ts";
-import { resolveForge } from "../../forge/registry.ts";
+import { resolveForgeFromConfig } from "../../forge/registry.ts";
 import {
 	loadPreviewEvictionConfigFromEnv,
 	startPreviewEvictionWorker,
@@ -178,8 +178,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	});
 
 	const autoOpenPr = loadAutoOpenPrConfigFromEnv(env);
-	// warren-6c4c: resolve the forge ONCE (runtimeProvider posture); ServerDeps.forge has the doc.
-	const forge = resolveForge({}, env);
+	// warren-f012: resolve forge from [[forges]] config block when present; falls back to WARREN_FORGE.
+	const forge = resolveForgeFromConfig(fileConfig.config.forges, env);
 	const gitHubAppRegistration = bootGitHubAppRegistrationGate(env, logger);
 
 	const warrenConfigs = createWarrenConfigCache();

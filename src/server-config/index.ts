@@ -18,6 +18,10 @@ export {
 	type ReadFileFn,
 } from "./load.ts";
 export {
+	type ForgeInstanceConfig,
+	ForgeInstanceConfigSchema,
+	type ForgesConfig,
+	ForgesConfigSchema,
 	type ParseResult,
 	parseWarrenServerFileConfig,
 	type WarrenServerFileConfig,
