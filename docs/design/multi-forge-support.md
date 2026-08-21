@@ -1,5 +1,11 @@
 # Multi-Forge Support (Forgejo, Gitea, GitLab) — Research Notes
 
+**Kind:** proposal
+**Design state:** draft
+**Delivery:** unscheduled
+**Arrived:** 2026-08-19
+**Current truth:** `src/forge/contract.ts`, `src/forge/registry.ts`, `src/server-config/schema.ts`
+
 **Status:** Research note. Two scope decisions recorded (§7 Q0, Q2);
 the architecture question (§5) is still open and carries no owner go.
 This document records what the existing design already decided, what it
