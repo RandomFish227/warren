@@ -7,17 +7,28 @@ harness and there is nothing to drift.
 
 ## What this project is
 
-Warren is a self-hostable control plane for ephemeral cloud agents.
-Point it at a GitHub repo, pick an agent, write a prompt. Warren spawns
-the agent inside a sandbox, streams events to the UI, accepts steering
-mid-run, then pushes the workspace branch. One container, one volume,
-one HTTP API, one UI.
+Coding agents are tools. Warren turns them into infrastructure.
 
-The fresh-install path is standalone. A user with a GitHub URL and an
-Anthropic key can dispatch a run end-to-end with no other tooling.
-Around that kernel, three [os-eco](https://github.com/jayminwest/os-eco)
-data-plane tools integrate as opt-in features, not required
-infrastructure.
+It runs agent harnesses as isolated workloads on infrastructure the
+operator controls. Warren owns the workspace, lifecycle, limits,
+events, intervention, recovery, and Git delivery.
+
+`AgentRuntimeAdapter` keeps the kernel harness-neutral. A harness needs
+an adapter before the runtime can drive it. The current distribution
+ships Pi and Claude Code adapters.
+
+Runtime providers place each run in a local `bwrap` sandbox on Linux or
+`sandbox-exec` sandbox on macOS, a sibling Docker container, or a
+Kubernetes pod.
+
+The kernel guarantees a pushed workspace branch. Project settings can
+add PR creation and tracker reactions around that boundary.
+
+The fresh-install path is standalone. A user with a GitHub URL and the
+model credential for a shipped harness can dispatch a run end-to-end
+with no other os-eco tooling. Around that kernel, two
+[os-eco](https://github.com/jayminwest/os-eco) data-plane tools integrate
+as opt-in features, not required infrastructure.
 
 - **mulch** — persistent agent memory across runs. Activated by a
   `.mulch/` directory in the project.
@@ -290,6 +301,14 @@ name.
 `gen:cli-ref:check` rides the same gate and holds the generated CLI
 reference in place.
 
+`check:design-docs` also rides inside `lint` and enforces these rules:
+
+- Every record has controlled metadata and one row in `docs/design/README.md`.
+- Shipped records point to current truth.
+- Mixed records have a scope-status table.
+- Records in `next` state name their ROADMAP order.
+- Approval alone never means roadmap commitment.
+
 Details on the additional checks:
 
 - **`check:size`** (warren-4553) — enforces a per-file line-count
@@ -353,7 +372,7 @@ Details on the additional checks:
 Biome's `noExcessiveCognitiveComplexity` rule (warren-d3a6, ceiling 15)
 holds a project-wide complexity budget. New code must stay under the
 threshold. Existing complexity and filename exceptions document their
-ratchet policies inline in `biome.jsonc`; both lists only shrink.
+ratchet policies inline in `biome.jsonc`. Both lists only shrink.
 
 ## Docs are a public surface
 
