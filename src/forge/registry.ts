@@ -26,9 +26,8 @@
  * has length one.
  */
 
-import type { ForgeInstanceConfig } from "../server-config/schema.ts";
 import type { Forge } from "./contract.ts";
-import { ForgeConfigError, UnknownForgeError } from "./errors.ts";
+import { UnknownForgeError } from "./errors.ts";
 import { FakeForge } from "./fake/fake-forge.ts";
 import { FAKE_FORGE_STATE_FILE_ENV, FakeForgeStore } from "./fake/store.ts";
 import { GitHubForge } from "./github/provider.ts";
@@ -154,97 +153,4 @@ export function resolveForge(deps: ForgeDeps = {}, env: ForgeEnv = process.env):
 			return new FakeForge({ store: new FakeForgeStore({ stateFile }) });
 		}
 	}
-}
-
-/**
- * Build a forge instance from a validated `[[forges]]` config entry
- * (warren-f012, multi-forge-support.md §2a).
- *
- * Fails LOUDLY at boot (throws `ForgeConfigError`) when a required env var
- * named by `tokenEnv` is missing or empty — mirrors the `app` arm's existing
- * loud-fail contract and the UnknownForgeError posture (forge-contract.md §1.1).
- */
-function buildForgeInstance(config: ForgeInstanceConfig, env: ForgeEnv): Forge {
-	switch (config.kind) {
-		case "github": {
-			// tokenEnv is guaranteed present for "github" by ForgeInstanceConfigSchema.
-			const varName = config.tokenEnv as string;
-			const token = env[varName];
-			if (token === undefined || token === "") {
-				throw new ForgeConfigError(
-					`forge "${config.id}": environment variable ${varName} (tokenEnv) is not set`,
-					{
-						recoveryHint: `Set ${varName} to a GitHub personal access token, or remove the forge entry from warren.toml.`,
-					},
-				);
-			}
-			return new GitHubForge({ token });
-		}
-		case "app": {
-			// GitHub App credentials are multi-var (WARREN_GITHUB_APP_*);
-			// loadGitHubAppCredentialsFromEnv already throws ForgeConfigError on
-			// missing inputs — that loud-fail posture covers this arm.
-			const credentials = loadGitHubAppCredentialsFromEnv(env);
-			return new GitHubAppForge({ ...credentials });
-		}
-		case "fake": {
-			const stateFile = env[FAKE_FORGE_STATE_FILE_ENV]?.trim();
-			if (stateFile === undefined || stateFile === "") {
-				return new FakeForge();
-			}
-			return new FakeForge({ store: new FakeForgeStore({ stateFile }) });
-		}
-	}
-}
-
-/**
- * Build the forge registry from an explicit `[[forges]]` config block
- * (warren-f012). Each entry produces one `Forge` keyed by its `id`.
- *
- * When `forgesConfig` is undefined or empty — i.e. the operator has not
- * written a `[[forges]]` block in `warren.toml` — the registry falls back to
- * the existing `WARREN_FORGE` + `GITHUB_TOKEN` env-var path and returns a
- * single-entry map keyed by the resolved kind name. This preserves exact
- * backward compatibility: a warren deploy with no `warren.toml` (or one
- * without a `[[forges]]` block) behaves identically to today.
- */
-export function resolveForgeRegistry(
-	forgesConfig: readonly ForgeInstanceConfig[] | undefined,
-	env: ForgeEnv = process.env,
-): Map<string, Forge> {
-	if (forgesConfig === undefined || forgesConfig.length === 0) {
-		const forge = resolveForge({}, env);
-		const kind = resolveForgeKind(env);
-		return new Map([[kind, forge]]);
-	}
-	const registry = new Map<string, Forge>();
-	for (const entry of forgesConfig) {
-		registry.set(entry.id, buildForgeInstance(entry, env));
-	}
-	return registry;
-}
-
-/**
- * Resolve the default `Forge` for this process, using the `[[forges]]` config
- * block when present and falling back to the env-var path otherwise
- * (warren-f012, backward compat with WARREN_FORGE).
- *
- * The server's `ServerDeps.forge` still carries a single `Forge` until
- * warren-834e (the multi-forge router) wires the full registry. This
- * function is the bridge: it builds the registry and extracts the first
- * (or only) entry so the rest of boot wiring is unchanged.
- */
-export function resolveForgeFromConfig(
-	forgesConfig: readonly ForgeInstanceConfig[] | undefined,
-	env: ForgeEnv = process.env,
-): Forge {
-	const registry = resolveForgeRegistry(forgesConfig, env);
-	const first = registry.values().next().value;
-	if (first === undefined) {
-		throw new ForgeConfigError("forge registry resolved to an empty map", {
-			recoveryHint:
-				"Add at least one [[forges]] entry to warren.toml, or remove the forges key entirely to use WARREN_FORGE.",
-		});
-	}
-	return first;
 }
