@@ -17,7 +17,7 @@
  */
 
 import type { Forge } from "../../forge/contract.ts";
-import { mintGitCredential } from "../../forge/credentials.ts";
+import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import { authenticatedCloneUrl } from "../../workspace/git/clone-url.ts";
 import type { BoundBridgeLogger } from "../stream/index.ts";
 import type { ReapExec } from "./types.ts";
@@ -115,11 +115,11 @@ async function measureDiffStats(input: RecordOutcomeFactsInput): Promise<DiffSta
 	// and read the range there (warren-ab66 posture). Requires the push to
 	// have landed and a forge credential for the fetch.
 	if (!input.branchPushed || input.branch === null || input.forge === undefined) return null;
-	const cred = await mintGitCredential(input.forge, input.project.gitUrl).catch(() => {
+	const token = await mintGitCredentialSecret(input.forge, input.project.gitUrl).catch(() => {
 		return undefined;
 	});
-	if (cred === undefined) return null;
-	return numstatFromClone(input, cred.secret);
+	if (token === undefined) return null;
+	return numstatFromClone(input, token);
 }
 
 /** Fetch `branch` into the clone under a private temp ref, read numstat, delete the ref. */

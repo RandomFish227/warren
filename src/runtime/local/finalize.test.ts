@@ -210,13 +210,7 @@ describe("finalize — stage trail + push reporting", () => {
 		const fs = fakeFs(fullSeed());
 		const exec = fakeExec({ revListCount: "3" });
 		const p = provider({ fs, exec, seedsPlansBody: "" });
-		const result = await p.finalize(
-			HANDLE,
-			intent({
-				gitCredential: { username: "x-access-token", secret: "ghp_pushsecret", expiresAt: null },
-				originHost: "github.com",
-			}),
-		);
+		const result = await p.finalize(HANDLE, intent({ gitToken: "ghp_pushsecret" }));
 		expect(result.pushed).toBe(true);
 		const push = exec.calls.find((c) => c.cmd === "git" && c.args[0] === "push");
 		expect(push?.env?.GIT_CONFIG_COUNT).toBe("1");

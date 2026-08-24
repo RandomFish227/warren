@@ -125,12 +125,12 @@ export interface SpawnRunInput {
 	readonly projectsConfig?: ProjectsConfig;
 	readonly projectSpawn?: ProjectSpawnFn;
 	/**
-	 * Provider-neutral git credential for the pre-dispatch refresh's `git fetch`
-	 * against a private repo (warren-1154 — minted per-spawn via
-	 * `mintGitCredential`, forwarded to `refreshProject`).
+	 * GitHub credential for the pre-dispatch refresh's `git fetch`
+	 * against a private repo (minted per-spawn via
+	 * `mintGitCredentialSecret`, forwarded to `refreshProject`).
 	 * Absent → anonymous.
 	 */
-	readonly gitCredential?: import("../../forge/contract.ts").GitCredential;
+	readonly githubToken?: string;
 	/** Branch, tag, or SHA to refresh to. Defaults to the project's tracked default branch. */
 	readonly ref?: string;
 	/**

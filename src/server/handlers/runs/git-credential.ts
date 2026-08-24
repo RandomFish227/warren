@@ -27,7 +27,7 @@
  */
 
 import { NotFoundError } from "../../../core/errors.ts";
-import { mintGitCredential } from "../../../forge/credentials.ts";
+import { mintGitCredentialSecret } from "../../../forge/credentials.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import { requireParam } from "../index.ts";
@@ -41,7 +41,7 @@ export function postRunGitCredentialHandler(deps: ServerDeps): RouteHandler {
 		if (project === null) {
 			throw new NotFoundError(`project ${run.projectId} for run ${id}`);
 		}
-		const cred = await mintGitCredential(deps.forge, project.gitUrl);
-		return jsonResponse(200, { gitToken: cred?.secret ?? null });
+		const gitToken = await mintGitCredentialSecret(deps.forge, project.gitUrl);
+		return jsonResponse(200, { gitToken: gitToken ?? null });
 	};
 }

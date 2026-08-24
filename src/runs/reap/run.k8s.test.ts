@@ -163,7 +163,7 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 		expect(result.state).toBe("succeeded");
 		// Minted from the forge (FakeForge's static secret) immediately before
 		// the finalize call — never read off a config object.
-		expect(fake.calls.lastIntent?.gitCredential?.secret).toBe("fake-credential");
+		expect(fake.calls.lastIntent?.gitToken).toBe("fake-credential");
 	});
 
 	test("no forge on the reap input leaves the finalize intent credential-free", async () => {
@@ -181,7 +181,7 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 			exec: e.exec,
 		});
 
-		expect(fake.calls.lastIntent?.gitCredential).toBeUndefined();
+		expect(fake.calls.lastIntent && "gitToken" in fake.calls.lastIntent).toBe(false);
 	});
 
 	test("applies finalize mirror deltas to the project clone (leg 2)", async () => {

@@ -118,8 +118,7 @@ describe("closeMergedChildSeed", () => {
 			issueTracker,
 			spawn,
 			gitBinary: "git",
-			gitCredential: { username: "x-access-token", secret: "ghp_secret", expiresAt: null },
-			originHost: "github.com",
+			githubToken: "ghp_secret",
 		});
 
 		const credKey = "url.https://x-access-token:ghp_secret@github.com/.insteadOf";

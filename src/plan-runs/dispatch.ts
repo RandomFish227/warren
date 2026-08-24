@@ -22,12 +22,9 @@
  */
 
 import type { Repos } from "../db/repos/index.ts";
-import type { Forge } from "../forge/contract.ts";
-import { mintGitCredential } from "../forge/credentials.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { spawnRun } from "../runs/index.ts";
-import type { SpawnRunInput } from "../runs/spawn/types.ts";
 import type { BridgeRegistry } from "../runs/stream/types.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
@@ -48,11 +45,8 @@ export interface CreatePlanRunSpawnInput {
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
 	readonly projectSpawn: SpawnFn;
-	/**
-	 * Boot-resolved forge (warren-1154) — mints a fresh git credential per child
-	 * dispatch (forge-contract.md §4 — minted, never held). Absent → anonymous git.
-	 */
-	readonly forge?: Forge;
+	/** Raw `GITHUB_TOKEN` for the pre-dispatch refresh fetch — see `SpawnRunInput.githubToken`. */
+	readonly githubToken?: string;
 	readonly seedsCli: SeedsCliDeps;
 	/** Boot-resolved IssueTracker (warren-5819) — threading seam for the child spawn. */
 	readonly issueTracker?: IssueTracker;
@@ -62,64 +56,45 @@ export interface CreatePlanRunSpawnInput {
 	readonly spawnRunFn?: typeof spawnRun;
 }
 
-/** Writable draft of the child's {@link SpawnRunInput}. */
-type ChildSpawnDraft = { -readonly [K in keyof SpawnRunInput]?: SpawnRunInput[K] };
-
-/**
- * Build spawn input for a plan-run child. Linear if-chains keep this under the
- * cognitive-complexity ceiling where conditional spreads would not.
- */
-function buildChildSpawnInput(
-	input: CreatePlanRunSpawnInput,
-	planRun: Parameters<CoordinatorSpawnFn>[0]["planRun"],
-	child: Parameters<CoordinatorSpawnFn>[0]["child"],
-	prompt: string,
-	ref: string,
-	gitCredential: Awaited<ReturnType<typeof mintGitCredential>> | undefined,
-): SpawnRunInput {
-	const draft: ChildSpawnDraft = {
-		repos: input.repos,
-		runtimeProvider: input.runtimeProvider,
-		agentName: planRun.agentName,
-		projectId: planRun.projectId,
-		prompt,
-		trigger: "plan-run",
-		dispatchOrigin: "plan_run",
-		seedId: child.seedId,
-		ref,
-		metadata: { planRunId: planRun.id, planId: planRun.planId, childSeq: child.seq },
-		projectsConfig: input.projectsConfig,
-		projectSpawn: input.projectSpawn,
-		warrenConfigs: input.warrenConfigs,
-		seedsCli: input.seedsCli,
-		dispatcherHandle: planRun.dispatcherHandle,
-	};
-	// warren-a63d: per-child spend cap on the override tier.
-	if (planRun.providerOverride !== null) draft.providerOverride = planRun.providerOverride;
-	if (planRun.modelOverride !== null) draft.modelOverride = planRun.modelOverride;
-	if (planRun.maxCostUsd !== null) draft.maxCostUsdOverride = planRun.maxCostUsd;
-	if (gitCredential !== undefined) draft.gitCredential = gitCredential;
-	if (input.issueTracker !== undefined) draft.issueTracker = input.issueTracker;
-	if (input.runBranchPrefixDefault !== undefined) {
-		draft.runBranchPrefixDefault = input.runBranchPrefixDefault;
-	}
-	if (input.now !== undefined) draft.now = input.now;
-	return draft as SpawnRunInput;
-}
-
 export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorSpawnFn {
 	const spawnRunFn = input.spawnRunFn ?? spawnRun;
 	return async ({ planRun, child, prompt }) => {
 		const project = await input.repos.projects.require(planRun.projectId);
 		const ref = planRun.ref ?? project.defaultBranch;
-		// warren-1154: mint the refresh credential per dispatch (forge-contract.md §4).
-		const gitCredential =
-			input.forge !== undefined
-				? await mintGitCredential(input.forge, project.gitUrl).catch(() => undefined)
-				: undefined;
-		const result = await spawnRunFn(
-			buildChildSpawnInput(input, planRun, child, prompt, ref, gitCredential),
-		);
+		const result = await spawnRunFn({
+			repos: input.repos,
+			runtimeProvider: input.runtimeProvider,
+			agentName: planRun.agentName,
+			projectId: planRun.projectId,
+			prompt,
+			trigger: "plan-run",
+			// warren-9ce3: underscore spelling matches the dispatch-origin
+			// vocabulary (distinct from the hyphenated trigger column).
+			dispatchOrigin: "plan_run",
+			seedId: child.seedId,
+			...(planRun.providerOverride !== null ? { providerOverride: planRun.providerOverride } : {}),
+			...(planRun.modelOverride !== null ? { modelOverride: planRun.modelOverride } : {}),
+			// warren-a63d: the plan-run's spend cap applies to EACH child dispatch
+			// on the override tier, same slot a POST /runs body cap rides.
+			...(planRun.maxCostUsd !== null ? { maxCostUsdOverride: planRun.maxCostUsd } : {}),
+			ref,
+			metadata: {
+				planRunId: planRun.id,
+				planId: planRun.planId,
+				childSeq: child.seq,
+			},
+			projectsConfig: input.projectsConfig,
+			projectSpawn: input.projectSpawn,
+			githubToken: input.githubToken,
+			warrenConfigs: input.warrenConfigs,
+			seedsCli: input.seedsCli,
+			...(input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {}),
+			dispatcherHandle: planRun.dispatcherHandle,
+			...(input.runBranchPrefixDefault !== undefined
+				? { runBranchPrefixDefault: input.runBranchPrefixDefault }
+				: {}),
+			...(input.now !== undefined ? { now: input.now } : {}),
+		});
 		input.bridges.start(result.run.id, result.sandboxRun.id, result.sandbox.id);
 		return { runId: result.run.id };
 	};

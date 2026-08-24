@@ -7,7 +7,7 @@
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import type { TrackerContext } from "../../core/wire.ts";
-import { mintGitCredential } from "../../forge/credentials.ts";
+import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import { ProjectLacksTrackerError } from "../../plan-runs/errors.ts";
 import { computeReadyPlans, type ReadyPlanInput } from "../../plan-runs/index.ts";
 import type { ProjectRow } from "../../projects/index.ts";
@@ -117,7 +117,7 @@ export function createProjectHandler(deps: ServerDeps): RouteHandler {
 		// warren-6c4c: mint the private-repo credential for the host-side clone
 		// per-spawn through the boot forge (forge-contract.md §4); no config
 		// object holds a token.
-		const gitCredential = await mintGitCredential(deps.forge, gitUrl);
+		const gitSecret = await mintGitCredentialSecret(deps.forge, gitUrl);
 		const project = await addProject({
 			repo: deps.repos.projects,
 			config: deps.projectsConfig,
@@ -125,7 +125,7 @@ export function createProjectHandler(deps: ServerDeps): RouteHandler {
 			forge: deps.forge,
 			...(deps.publicAllowlist !== undefined ? { publicAllowlist: deps.publicAllowlist } : {}),
 			...(defaultBranch !== undefined ? { defaultBranch } : {}),
-			...(gitCredential !== undefined ? { gitCredential } : {}),
+			...(gitSecret !== undefined ? { token: gitSecret } : {}),
 			spawn: defaultSpawn,
 		});
 		return jsonResponse(201, project);
@@ -350,7 +350,7 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 		// warren-6c4c: mint per git spawn (forge-contract.md §4) — once for the
 		// refresh fetch below, again for spawnRun's internal clone refresh —
 		// — no config object holds a token. Static under PAT.
-		const refreshCredential = await mintGitCredential(deps.forge, required.gitUrl);
+		const refreshSecret = await mintGitCredentialSecret(deps.forge, required.gitUrl);
 
 		// Refresh the clone BEFORE reading the trigger entry. The cached
 		// config snapshot predates spawnRun's internal refresh, so without
@@ -365,7 +365,7 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 			repo: deps.repos.projects,
 			config: deps.projectsConfig,
 			id: required.id,
-			...(refreshCredential !== undefined ? { gitCredential: refreshCredential } : {}),
+			...(refreshSecret !== undefined ? { token: refreshSecret } : {}),
 			spawn: deps.spawn ?? defaultSpawn,
 			...(deps.now !== undefined ? { now: deps.now } : {}),
 			...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),
@@ -391,7 +391,7 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 		const prompt = resolveCronPrompt(trigger, loaded.defaults);
 		const now = deps.now?.() ?? new Date();
 
-		const spawnCredential = await mintGitCredential(deps.forge, required.gitUrl);
+		const spawnSecret = await mintGitCredentialSecret(deps.forge, required.gitUrl);
 		const result = await spawnRun({
 			repos: deps.repos,
 			// warren-245d: dispatch through the resolved runtime provider so the
@@ -418,7 +418,7 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 			...(deps.now !== undefined ? { now: deps.now } : {}),
 			projectsConfig: deps.projectsConfig,
 			projectSpawn: deps.spawn ?? defaultSpawn,
-			...(spawnCredential !== undefined ? { gitCredential: spawnCredential } : {}),
+			...(spawnSecret !== undefined ? { githubToken: spawnSecret } : {}),
 			...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),
 			...(deps.runBranchPrefixDefault !== undefined
 				? { runBranchPrefixDefault: deps.runBranchPrefixDefault }
@@ -473,13 +473,13 @@ export function refreshProjectHandler(deps: ServerDeps): RouteHandler {
 		// the boot forge (forge-contract.md §4). The project row is loaded for
 		// its gitUrl; refreshProject re-requires it internally.
 		const project = await deps.repos.projects.require(id);
-		const gitCredential = await mintGitCredential(deps.forge, project.gitUrl);
+		const gitSecret = await mintGitCredentialSecret(deps.forge, project.gitUrl);
 		const result = await refreshProject({
 			repo: deps.repos.projects,
 			config: deps.projectsConfig,
 			id,
 			...(ref !== undefined ? { ref } : {}),
-			...(gitCredential !== undefined ? { gitCredential } : {}),
+			...(gitSecret !== undefined ? { token: gitSecret } : {}),
 			spawn: deps.spawn ?? defaultSpawn,
 			...(deps.now !== undefined ? { now: deps.now } : {}),
 			...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),

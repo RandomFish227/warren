@@ -34,7 +34,6 @@ import type { PlanRunSource, PlanStatus } from "../core/wire.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { CreatePlanRunResult } from "../db/repos/plan-runs.ts";
 import type { ProjectRow } from "../db/schema.ts";
-import type { GitCredential } from "../forge/contract.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { refreshProject } from "../projects/index.ts";
@@ -84,8 +83,8 @@ export interface CreatePlanRunOrchestrationInput {
 	/** Git spawn seam. When wired, the host clone is refreshed before the plan walk (warren-6d60). */
 	readonly spawn?: SpawnFn;
 	readonly projectsConfig: ProjectsConfig;
-	/** Private-repo credential for the host-side refresh fetch (warren-1154, minted per-spawn via `mintGitCredential`). */
-	readonly gitCredential?: GitCredential;
+	/** Private-repo credential for the host-side refresh fetch (minted per-spawn via `mintGitCredentialSecret`). */
+	readonly gitToken?: string;
 	readonly warrenConfigs?: WarrenConfigCache;
 	/** Test seam — defaults to the live `refreshProject`. */
 	readonly refreshProjectFn?: typeof refreshProject;
@@ -114,7 +113,7 @@ async function refreshDispatchProject(
 		repo: input.repos.projects,
 		config: input.projectsConfig,
 		id: project.id,
-		...(input.gitCredential !== undefined ? { gitCredential: input.gitCredential } : {}),
+		token: input.gitToken,
 		spawn: input.spawn,
 		...(input.ref !== undefined ? { ref: input.ref } : {}),
 		...(input.now !== undefined ? { now: input.now } : {}),

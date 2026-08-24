@@ -306,23 +306,26 @@ export interface FinalizeIntent {
 	 */
 	projectClonePathHint?: string;
 	/**
-	 * warren-8d95: warren-seeded artifacts (agent envelope, `.pi/`, `.seeds/workflow.txt`)
-	 * to RESET before `branch_push` so they never ride into a PR. Each entry carries
-	 * the path and the exact seeded bytes; finalize only resets when live content
-	 * still equals the seeded bytes (so an intentional agent edit is preserved).
-	 * Omitted/empty ⇒ skip. LocalProvider honors it; the K8s wire does not yet.
+	 * warren-8d95: warren-seeded workspace artifacts (the rendered agent
+	 * envelope + `.pi/` drops + `.seeds/workflow.txt`) that must be RESET to
+	 * `baseBranch` before `branch_push` so they never ride into a PR. In
+	 * projects that themselves track a colliding path, warren's seed dirties the
+	 * tracked file and a broad agent commit (`git add -A`) sweeps it in, tripping
+	 * Article IX protected-path automerge guard. Each entry carries the path and
+	 * the exact bytes warren seeded; finalize only resets a path whose live
+	 * workspace content still EQUALS the seeded bytes (so an intentional agent
+	 * edit is preserved). Omitted / empty ⇒ the reset stage is skipped (existing
+	 * callers unchanged). LocalProvider honors it; the K8s wire does not yet
+	 * project it.
 	 */
 	resetSeededPaths?: ReadonlyArray<{ path: string; contents: string }>;
 	/**
-	 * Per-spawn minted git credential for `branch_push` (warren-1154 — §0
-	 * invariant fix: provider-neutral `GitCredential` instead of a raw token so
-	 * no forge-specific value leaks outside `src/forge/`). LocalProvider splices
-	 * it into the push's `GIT_CONFIG_*` env; K8s packs `.secret` into the pod
-	 * wire. Undefined ⇒ anonymous push. */
-	gitCredential?: import("../forge/contract.ts").GitCredential;
-	/** HTTPS hostname of the git remote, extracted from the project's clone URL.
-	 * Paired with `gitCredential` for `credentialGitEnv`. Omitted ⇒ anonymous. */
-	originHost?: string;
+	 * Per-spawn minted git credential for `branch_push` (warren-4e1c, forge
+	 * contract §4 — minted via `mintGitCredentialSecret` immediately before
+	 * `finalize`, never held on a config object). LocalProvider splices it into
+	 * the push's `GIT_CONFIG_*` env; K8s prefers it over the env-derived token.
+	 * Undefined ⇒ anonymous push. */
+	gitToken?: string;
 }
 
 /**

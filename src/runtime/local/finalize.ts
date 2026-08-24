@@ -42,7 +42,7 @@ import {
 	repairBaseTrackingRef,
 	workspaceDirtyPaths,
 } from "../../runs/reap/util.ts";
-import { credentialGitEnv } from "../../workspace/git/credential-env.ts";
+import { githubCredentialGitEnv } from "../../workspace/git/credential-env.ts";
 import type {
 	ArtifactDelta,
 	ArtifactDeltaFile,
@@ -419,13 +419,13 @@ async function finalizePush(
 	const countBase = await resolveCountBase(intent, workspacePath, exec);
 	const refspec = intent.branch === "" ? "HEAD" : `HEAD:${intent.branch}`;
 	try {
-		// warren-1154/4e1c: the push authenticates with the per-spawn credential the
+		// warren-4e1c: the push authenticates with the per-spawn credential the
 		// domain minted onto the intent (forge-contract.md §4); empty/absent
 		// yields `{}` and anonymous push, the pre-forge behavior.
 		await exec.run("git", ["push", "origin", refspec], {
 			cwd: workspacePath,
 			timeoutMs: 60_000,
-			env: credentialGitEnv(intent.gitCredential, intent.originHost),
+			env: githubCredentialGitEnv(intent.gitToken),
 		});
 		trail.ok("branch_push");
 	} catch (err) {

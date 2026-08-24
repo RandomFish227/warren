@@ -24,8 +24,7 @@ import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { formatError } from "../core/errors.ts";
-import type { GitCredential } from "../forge/contract.ts";
-import { credentialGitEnv, extractGitHost } from "../workspace/git/credential-env.ts";
+import { githubCredentialGitEnv } from "../workspace/git/credential-env.ts";
 import type { ProjectsConfig } from "./config.ts";
 import { ProjectUnavailableError } from "./errors.ts";
 
@@ -122,14 +121,15 @@ export interface CloneProjectInput {
 	/** Override default-branch detection. */
 	readonly defaultBranch?: string;
 	/**
-	 * Provider-neutral git credential for private-repo access (warren-1154 —
-	 * replaces the former `token?: string` to avoid hardcoding forge-specific
-	 * values outside `src/forge/`). Applied as a process-scoped `insteadOf`
-	 * rewrite via `credentialGitEnv` on the network-touching git spawns (clone,
+	 * GitHub token for private-repo access (`GITHUB_TOKEN` at the HTTP
+	 * boundary). Applied as a process-scoped `insteadOf` rewrite via
+	 * `githubCredentialGitEnv` on the network-touching git spawns (clone,
 	 * `remote set-head`) — never in argv, never persisted to the clone's
 	 * config. Absent/empty → anonymous clone, exactly the old behavior.
+	 * The supervisor's global rule covers the local topology; this covers
+	 * `warren serve` running bare (K8s pod), where no global rule exists.
 	 */
-	readonly gitCredential?: GitCredential;
+	readonly token?: string;
 	readonly spawn: SpawnFn;
 	readonly timeoutMs?: number;
 	/** Filesystem probes — overrideable for tests. */
@@ -160,9 +160,9 @@ export async function cloneProjectRepo(input: CloneProjectInput): Promise<CloneP
 
 	await ensureParentDir(mkdirp, dirname(localPath));
 
-	// No credential → no `env` key at all, so anonymous public-repo clones spawn
+	// No token → no `env` key at all, so anonymous public-repo clones spawn
 	// exactly as before (plain inheritance, nothing for tests to see).
-	const credEnv = credentialGitEnv(input.gitCredential, extractGitHost(gitUrl));
+	const credEnv = githubCredentialGitEnv(input.token);
 	const netEnv = Object.keys(credEnv).length > 0 ? { env: credEnv } : {};
 
 	const cloneCmd = [config.gitBinary, "clone", gitUrl, localPath];

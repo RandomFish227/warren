@@ -42,9 +42,9 @@ import {
 	warrenCommitIdentityArgs,
 	warrenCommitIdentityEnv,
 } from "../../bot-identity.ts";
-import { mintGitCredential } from "../../forge/credentials.ts";
+import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import type { FinalizeResult } from "../../runtime/contract.ts";
-import { credentialGitEnv, extractGitHost } from "../../workspace/git/credential-env.ts";
+import { githubCredentialGitEnv } from "../../workspace/git/credential-env.ts";
 import { isCommitSha } from "../base-commit.ts";
 import { hasAutoPlanRunFrontmatter } from "./auto-plan-run.ts";
 import type { ReapPipelineContext, ReapPipelineState } from "./pipeline.ts";
@@ -204,19 +204,18 @@ export async function pushCloneDeltasToOrigin(
 		return false;
 	}
 	try {
-		// warren-4e1c/1154: per-spawn minted credential (forge-contract.md §4 —
+		// warren-4e1c: per-spawn minted credential (forge-contract.md §4 —
 		// minted HERE, immediately before the push spawn, never held). A mint
 		// failure throws inside this try and degrades to `clone_apply_push` +
 		// suppressed auto-dispatch, exactly like a rejected push.
-		const cred =
+		const secret =
 			ctx.input.forge !== undefined
-				? await mintGitCredential(ctx.input.forge, ctx.project.gitUrl)
+				? await mintGitCredentialSecret(ctx.input.forge, ctx.project.gitUrl)
 				: undefined;
-		const host = extractGitHost(ctx.project.gitUrl);
 		await ctx.exec.run("git", ["push", "origin", `HEAD:${ref}`], {
 			cwd: ctx.project.localPath,
 			timeoutMs: PUSH_TIMEOUT_MS,
-			env: { ...gitRepoContextScrubEnv(), ...credentialGitEnv(cred, host) },
+			env: { ...gitRepoContextScrubEnv(), ...githubCredentialGitEnv(secret) },
 		});
 		await ctx.emit("reap.clone_deltas_pushed", { ref });
 		return true;

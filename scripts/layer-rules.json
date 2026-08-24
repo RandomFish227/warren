@@ -55,41 +55,13 @@
 		},
 		{
 			"name": "github-api-literal-is-forge-only",
-			"why": "The github.com literal lives only inside the forge seam (docs/design/forge-contract.md \u00a70). Domain code names a RepoRef or a GitCredential, never a forge-specific hostname; a new literal outside src/forge/ is a leak across the seam. Widened from api\\.github\\.com to github\\.com in warren-1154 to catch the full invariant. scripts/ joined `from` in warren-c042 when the walk widened to cover it.",
+			"why": "The api.github.com literal lives only inside the forge seam (docs/design/forge-contract.md \u00a70). Domain code names a RepoRef, never a GitHub URL; a new literal outside src/forge/ is a leak across the seam. scripts/ joined `from` in warren-c042 when the walk widened to cover it.",
 			"from": ["src/", "scripts/"],
-			"forbidPattern": "github\\.com",
+			"forbidPattern": "api\\.github\\.com",
 			"allow": [
 				{
 					"path": "src/forge/",
 					"why": "the forge seam itself \u2014 it owns the GitHub transport"
-				},
-				{
-					"path": "src/projects/url.ts",
-					"why": "legacy GitHub-only URL parser; the github.com hostname check is the parser's whole contract \u2014 will migrate to src/forge/ in warren-834e"
-				},
-				{
-					"path": "src/diagnostics/checks.ts",
-					"why": "operator-facing noreply address hint in a warning message; not a forge transport literal, and the hint is GitHub-specific only because that is the dominant deploy target"
-				},
-				{
-					"path": "src/server/handlers/github-app.ts",
-					"why": "GitHub App manifest registration handler; the CSP form-action and the warren homepage URL are GitHub-specific UI artifacts, not forge transport calls"
-				},
-				{
-					"path": "src/projects/public-allowlist.ts",
-					"why": "public allowlist parser calls the legacy parseGitHubUrl helper with a constructed https://github.com/ prefix; this is an owner/repo parsing step, not a forge transport call"
-				},
-				{
-					"path": "src/server/handlers/runs.events-projection.test-corpus.ts",
-					"why": "test fixture data: sample agent event text that contains github.com URLs as realistic string content in event transcripts, not forge transport literals"
-				},
-				{
-					"path": "scripts/acceptance/",
-					"why": "acceptance harness fixtures construct realistic project git URLs (github.com/warren-acceptance/...) and bwrap allowed-domains lists — these are test data, not forge transport calls"
-				},
-				{
-					"path": "src/ui/",
-					"why": "UI input placeholder text uses a github.com example URL for the project registration form — documentation, not a forge transport call"
 				}
 			]
 		},

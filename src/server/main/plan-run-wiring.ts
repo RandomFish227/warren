@@ -12,7 +12,7 @@
 
 import type { Repos } from "../../db/repos/index.ts";
 import type { Forge } from "../../forge/contract.ts";
-import { mintGitCredential } from "../../forge/credentials.ts";
+import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import {
 	bootPlanRunCoordinator,
 	type CoordinatorCloseChildSeedFn,
@@ -35,7 +35,6 @@ import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { IssueTracker } from "../../tracker/contract.ts";
 import { SeedsTracker } from "../../tracker/seeds-tracker.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
-import { extractGitHost } from "../../workspace/git/credential-env.ts";
 import type { EnvLike } from "../config.ts";
 import type { BridgeRegistry, Logger } from "../types.ts";
 import { planRunLoggerFromPino } from "./logging.ts";
@@ -151,12 +150,11 @@ function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSe
 			// the close entirely for tracker-served projects (caught by
 			// acceptance scenario 43).
 			if (issueTracker.capabilities.isGitNative && !project.hasSeeds) return;
-			// warren-63e7/1154: mint the fetch/push credential from the forge
+			// warren-63e7: mint the fetch/push credential from the forge
 			// immediately before the git spawns (forge-contract.md §4 — minted,
-			// never held). Pass the full GitCredential so close-child-seed never
-			// names forge-specific values (§0 invariant).
-			const gitCredential = await mintGitCredential(forge, project.gitUrl);
-			const originHost = extractGitHost(project.gitUrl);
+			// never held) instead of reading a boot-captured env.GITHUB_TOKEN.
+			// Undefined → anonymous git, the old no-token behavior.
+			const gitSecret = await mintGitCredentialSecret(forge, project.gitUrl);
 			const result = await closeMergedChildSeed({
 				projectPath: project.localPath,
 				defaultBranch: project.defaultBranch,
@@ -167,8 +165,7 @@ function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSe
 				gitBinary: projectsConfig.gitBinary,
 				// Minted per close so the fetch/push work against private repos
 				// on the K8s control plane (no supervisor insteadOf rule there).
-				...(gitCredential !== undefined ? { gitCredential } : {}),
-				...(originHost !== undefined ? { originHost } : {}),
+				githubToken: gitSecret,
 			});
 			logger.info(
 				{ planRunId: planRun.id, seq: child.seq, seedId: child.seedId, outcome: result.kind },
@@ -271,8 +268,9 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 			warrenConfigs,
 			projectsConfig,
 			projectSpawn,
-			// warren-1154: the forge mints a fresh credential per child dispatch.
-			forge,
+			// Raw token for the pre-dispatch refresh fetch (private repos on
+			// the K8s control plane) — see SpawnRunInput.githubToken.
+			githubToken: env.GITHUB_TOKEN,
 			seedsCli,
 			...(issueTracker !== undefined ? { issueTracker } : {}),
 			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),

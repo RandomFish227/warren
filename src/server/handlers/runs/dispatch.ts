@@ -1,6 +1,5 @@
 import { ValidationError } from "../../../core/errors.ts";
-import type { GitCredential } from "../../../forge/contract.ts";
-import { mintGitCredential } from "../../../forge/credentials.ts";
+import { mintGitCredentialSecret } from "../../../forge/credentials.ts";
 import { readProviderFrontmatter } from "../../../registry/schema.ts";
 import { validateBaseCommit, validateDispatchRef } from "../../../runs/base-commit.ts";
 import { readMaxCostUsd } from "../../../runs/cost-cap.ts";
@@ -39,13 +38,13 @@ interface CloneDefaults {
  * the boot forge (forge-contract.md §4); no config object holds a token.
  * Extracted so `createRunHandler`'s complexity budget stays intact.
  */
-async function mintSpawnGitCredential(
+async function mintSpawnGithubToken(
 	deps: ServerDeps,
 	projectId: string,
-): Promise<{ gitCredential?: GitCredential }> {
+): Promise<{ githubToken?: string }> {
 	const project = await deps.repos.projects.require(projectId);
-	const cred = await mintGitCredential(deps.forge, project.gitUrl);
-	return cred !== undefined ? { gitCredential: cred } : {};
+	const secret = await mintGitCredentialSecret(deps.forge, project.gitUrl);
+	return secret !== undefined ? { githubToken: secret } : {};
 }
 
 async function resolveCloneDefaults(
@@ -177,7 +176,7 @@ async function buildHttpSpawnOptions(
 		mode: "batch",
 		projectsConfig: deps.projectsConfig,
 		projectSpawn: deps.spawn ?? defaultSpawn,
-		...(await mintSpawnGitCredential(deps, projectId)),
+		...(await mintSpawnGithubToken(deps, projectId)),
 		// warren-b27c: shape-checked, not cast.
 		metadata: optionalObject(body, "metadata"),
 		now: deps.now,

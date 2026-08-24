@@ -43,7 +43,7 @@
 import type { Repos } from "../../db/repos/index.ts";
 import type { EventRow } from "../../db/schema.ts";
 import type { Forge } from "../../forge/contract.ts";
-import { mintGitCredential } from "../../forge/credentials.ts";
+import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import type { SpawnFn as ProjectSpawnFn } from "../../projects/clone.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
@@ -298,9 +298,9 @@ async function dispatchProviderRetry(
 	const emit = makeRunEventEmitter(input, now);
 	try {
 		const project = await input.repos.projects.get(run.projectId);
-		const gitCredential =
+		const gitSecret =
 			input.forge !== undefined && project !== null
-				? await mintGitCredential(input.forge, project.gitUrl)
+				? await mintGitCredentialSecret(input.forge, project.gitUrl)
 				: undefined;
 		const spawnRunFn = input.spawnRunFn ?? spawnRun;
 		const result = await spawnRunFn({
@@ -333,7 +333,7 @@ async function dispatchProviderRetry(
 			retryOf: run.id,
 			projectsConfig: input.projectsConfig,
 			projectSpawn: input.projectSpawn,
-			...(gitCredential !== undefined ? { gitCredential } : {}),
+			githubToken: gitSecret,
 			...(input.warrenConfigs !== undefined ? { warrenConfigs: input.warrenConfigs } : {}),
 			...(input.runBranchPrefixDefault !== undefined
 				? { runBranchPrefixDefault: input.runBranchPrefixDefault }

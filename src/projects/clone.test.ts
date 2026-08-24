@@ -240,7 +240,7 @@ describe("cloneProjectRepo", () => {
 			gitUrl: "https://github.com/x/private.git",
 			owner: "x",
 			name: "private",
-			gitCredential: { username: "x-access-token", secret: "ghp_secret", expiresAt: null },
+			token: "ghp_secret",
 			spawn,
 			exists: fs.exists,
 			mkdirp: fs.mkdirp,

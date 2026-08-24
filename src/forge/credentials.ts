@@ -5,11 +5,12 @@
  * The HTTP handlers that fan a git credential into a domain call
  * (`addProject`, `refreshProject`, `spawnRun`, `createPlanRun`) mint HERE,
  * immediately before the call that spawns git, and pass only the minted
- * credential down the existing params. Those params feed `credentialGitEnv`
- * (src/workspace/git/credential-env.ts), which renders the per-spawn
- * `GIT_CONFIG_*` env — the process lifetime of one git child is the
- * credential's whole lifetime. Under PAT mode the mint is a static read
- * (free); under App mode this same call site is the re-mint point.
+ * secret down the existing `token` / `githubToken` params. Those params
+ * feed `githubCredentialGitEnv` (src/workspace/git/credential-env.ts),
+ * which renders the per-spawn `GIT_CONFIG_*` env — the process lifetime of
+ * one git child is the credential's whole lifetime. Under PAT mode the
+ * mint is a static read (free); under App mode this same call site is the
+ * re-mint point.
  *
  * Callers pass the boot-resolved `Forge` (`ServerDeps.forge`, resolved once
  * by `resolveForge` in `src/server/main/index.ts`) — never a per-request
@@ -17,7 +18,7 @@
  */
 
 import { WarrenError } from "../core/errors.ts";
-import type { Forge, GitCredential } from "./contract.ts";
+import type { Forge } from "./contract.ts";
 
 /**
  * Thrown when a forge that OWNS the clone URL fails to mint a git
@@ -31,11 +32,7 @@ export class GitCredentialMintError extends WarrenError {
 }
 
 /**
- * Mint a full git credential for ONE git network op against `cloneUrl`.
- *
- * Returns the full `GitCredential` (username + secret + expiresAt) so
- * callers can pass it to `credentialGitEnv` without naming forge-specific
- * values such as `x-access-token` (forge-contract.md §0).
+ * Mint the secret for ONE git network op against `cloneUrl`.
  *
  * Returns `undefined` — anonymous git — in exactly the two cases the old
  * `AutoOpenPrConfig.gitToken` fan-out produced no credential:
@@ -48,10 +45,10 @@ export class GitCredentialMintError extends WarrenError {
  *
  * Any other mint failure throws `GitCredentialMintError`.
  */
-export async function mintGitCredential(
+export async function mintGitCredentialSecret(
 	forge: Forge,
 	cloneUrl: string,
-): Promise<GitCredential | undefined> {
+): Promise<string | undefined> {
 	const ref = forge.parseRepoRef(cloneUrl);
 	if (ref === null) return undefined;
 	const result = await forge.gitCredential(ref);
@@ -65,5 +62,5 @@ export async function mintGitCredential(
 			},
 		);
 	}
-	return result.value.secret === "" ? undefined : result.value;
+	return result.value.secret === "" ? undefined : result.value.secret;
 }

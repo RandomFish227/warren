@@ -34,10 +34,9 @@ import {
 	warrenCommitIdentityArgs,
 	warrenCommitIdentityEnv,
 } from "../bot-identity.ts";
-import type { GitCredential } from "../forge/contract.ts";
 import type { SpawnFn } from "../projects/index.ts";
 import type { IssueTracker } from "../tracker/contract.ts";
-import { credentialGitEnv } from "../workspace/git/credential-env.ts";
+import { githubCredentialGitEnv } from "../workspace/git/credential-env.ts";
 
 export interface CloseMergedChildSeedInput {
 	/** Project clone whose origin carries the seed queue (coordination project). */
@@ -54,18 +53,12 @@ export interface CloseMergedChildSeedInput {
 	readonly spawn: SpawnFn;
 	readonly gitBinary: string;
 	/**
-	 * Provider-neutral git credential for the fetch + push against a private
-	 * origin (warren-1154 — replaces the former raw token to avoid hardcoding
-	 * forge-specific values outside `src/forge/`). Applied per-spawn via
-	 * `credentialGitEnv`. Absent ⇒ anonymous git, the old behavior.
+	 * Raw `GITHUB_TOKEN` for the fetch + push against a private origin,
+	 * applied per-spawn via `githubCredentialGitEnv` (needed on the K8s
+	 * control plane, where no supervisor-installed global insteadOf rule
+	 * exists). Absent/empty → anonymous git, the old behavior.
 	 */
-	readonly gitCredential?: GitCredential;
-	/**
-	 * HTTPS hostname of the git remote (e.g. `"github.com"`), derived from the
-	 * project's `gitUrl` by the caller. Paired with `gitCredential` for the
-	 * credential env. Omitted ⇒ anonymous git.
-	 */
-	readonly originHost?: string;
+	readonly githubToken?: string;
 }
 
 export type CloseMergedChildSeedResult =
@@ -139,7 +132,7 @@ export async function closeMergedChildSeed(
 
 	const scrub = gitRepoContextScrubEnv();
 	// Credential env for the network-touching calls only (fetch + push).
-	const cred = credentialGitEnv(input.gitCredential, input.originHost);
+	const cred = githubCredentialGitEnv(input.githubToken);
 
 	// Best-effort fetch so the worktree reflects the just-merged default branch.
 	await runGit(input, ["fetch", "--prune", "origin"], input.projectPath, { ...scrub, ...cred });
