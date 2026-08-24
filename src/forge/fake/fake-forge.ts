@@ -176,6 +176,23 @@ export class FakeForge implements Forge {
 		);
 	}
 
+	/**
+	 * FakeForge satisfies the §4b identity probe by owning the `fake://`
+	 * scheme — no network call required (warren-56bb).
+	 */
+	probeIdentity(baseUrl: string): Promise<ForgeResult<void>> {
+		if (baseUrl.startsWith(FAKE_CLONE_URL_SCHEME)) {
+			return Promise.resolve(ok(undefined));
+		}
+		return Promise.resolve({
+			ok: false,
+			error: {
+				kind: "http_error" as const,
+				detail: `FakeForge identity probe: expected a fake:// base URL, got "${baseUrl}"`,
+			},
+		});
+	}
+
 	// --- Seeding seams (FakeForge public API beyond the Forge interface) ---
 
 	/** Transition an open PR to merged, as the auto-merge workflow would. */

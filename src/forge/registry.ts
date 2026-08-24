@@ -29,8 +29,9 @@
 import type { ForgeInstanceConfig } from "../server-config/schema.ts";
 import type { Forge } from "./contract.ts";
 import { ForgeConfigError, UnknownForgeError } from "./errors.ts";
-import { FakeForge } from "./fake/fake-forge.ts";
+import { FAKE_CLONE_URL_SCHEME, FakeForge } from "./fake/fake-forge.ts";
 import { FAKE_FORGE_STATE_FILE_ENV, FakeForgeStore } from "./fake/store.ts";
+import { GITHUB_API_BASE } from "./github/headers.ts";
 import { GitHubForge } from "./github/provider.ts";
 import {
 	type GitHubAppCredentials,
@@ -225,20 +226,63 @@ export function resolveForgeRegistry(
 }
 
 /**
+ * Derive the probe base URL for a forge instance config entry (warren-56bb,
+ * §4b). `github` and `app` probe the fixed GitHub API endpoint; `fake` uses
+ * the scheme FakeForge owns. Self-hosted kinds (forgejo, gitlab) will use
+ * `config.baseUrl` when their providers land.
+ */
+function forgeInstanceBaseUrl(config: ForgeInstanceConfig): string {
+	switch (config.kind) {
+		case "github":
+		case "app":
+			return GITHUB_API_BASE;
+		case "fake":
+			return FAKE_CLONE_URL_SCHEME;
+	}
+}
+
+/**
  * Resolve the default `Forge` for this process, using the `[[forges]]` config
  * block when present and falling back to the env-var path otherwise
  * (warren-f012, backward compat with WARREN_FORGE).
+ *
+ * When a `[[forges]]` block is present, each declared instance is validated
+ * with a `probeIdentity` call before the function returns — a misconfigured
+ * or wrong-kind host fails loud at boot (§4b — warren-56bb). Pass
+ * `skipProbe: true` in tests that do not need network validation.
  *
  * The server's `ServerDeps.forge` still carries a single `Forge` until
  * warren-834e (the multi-forge router) wires the full registry. This
  * function is the bridge: it builds the registry and extracts the first
  * (or only) entry so the rest of boot wiring is unchanged.
  */
-export function resolveForgeFromConfig(
+export async function resolveForgeFromConfig(
 	forgesConfig: readonly ForgeInstanceConfig[] | undefined,
 	env: ForgeEnv = process.env,
-): Forge {
+	opts: { skipProbe?: boolean } = {},
+): Promise<Forge> {
 	const registry = resolveForgeRegistry(forgesConfig, env);
+
+	// Run identity probes for config-driven instances (§4b — warren-56bb).
+	// The WARREN_FORGE env-var fallback path skips the probe: it has no
+	// operator-stated base URL to validate against.
+	if (!opts.skipProbe && forgesConfig !== undefined && forgesConfig.length > 0) {
+		for (const config of forgesConfig) {
+			const forge = registry.get(config.id);
+			if (forge === undefined) continue;
+			const baseUrl = forgeInstanceBaseUrl(config);
+			const result = await forge.probeIdentity(baseUrl);
+			if (!result.ok) {
+				throw new ForgeConfigError(
+					`forge "${config.id}" (kind: ${config.kind}) identity probe failed: ${result.error.detail}`,
+					{
+						recoveryHint: `Verify that the forge host at ${baseUrl} is reachable and is a ${config.kind} instance.`,
+					},
+				);
+			}
+		}
+	}
+
 	const first = registry.values().next().value;
 	if (first === undefined) {
 		throw new ForgeConfigError("forge registry resolved to an empty map", {

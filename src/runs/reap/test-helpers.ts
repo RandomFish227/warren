@@ -407,6 +407,7 @@ export function stubForge(overrides: Partial<Forge> = {}): Forge {
 		fetchJobLogTail: (ref, jobId, maxBytes) => inner.fetchJobLogTail(ref, jobId, maxBytes),
 		deleteBranch: (ref, branch) => inner.deleteBranch(ref, branch),
 		botIdentity: () => inner.botIdentity(),
+		probeIdentity: (baseUrl) => inner.probeIdentity(baseUrl),
 		...overrides,
 	};
 }

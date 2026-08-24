@@ -53,6 +53,7 @@ import type {
 import type { GitHubHttpError } from "./errors.ts";
 import { GITHUB_API_BASE } from "./headers.ts";
 import { requestGitHub } from "./http.ts";
+import { probeGitHubIdentity } from "./identity-probe.ts";
 import { readJson, readText } from "./readers.ts";
 import { GITHUB_FORGE_KIND, parseGitHubRepoRef } from "./repo-ref.ts";
 import {
@@ -351,6 +352,11 @@ export class GitHubForge implements Forge {
 		});
 		if (!result.ok) return err(toForgeError(result.error));
 		return ok(undefined);
+	}
+
+	/** Validate that `baseUrl` serves the GitHub API (§4b — warren-56bb). */
+	probeIdentity(baseUrl: string): Promise<ForgeResult<void>> {
+		return probeGitHubIdentity(baseUrl, this.fetch);
 	}
 
 	/** PAT mode holds no bot identity (§5): the domain falls back to env. */

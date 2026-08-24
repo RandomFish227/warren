@@ -265,3 +265,33 @@ describe("rollUpChecks", () => {
 		);
 	});
 });
+
+describe("FakeForge.probeIdentity — warren-56bb §4b", () => {
+	test("ok for fake:// base URL (FakeForge owns the scheme)", async () => {
+		const forge = new FakeForge();
+		const result = await forge.probeIdentity("fake://");
+		expect(result.ok).toBe(true);
+	});
+
+	test("ok for any fake:// URL (scheme prefix is sufficient)", async () => {
+		const forge = new FakeForge();
+		expect((await forge.probeIdentity("fake://some-instance")).ok).toBe(true);
+	});
+
+	test("http_error for a non-fake:// URL (wrong forge kind)", async () => {
+		const forge = new FakeForge();
+		const result = await forge.probeIdentity("https://github.com");
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error.kind).toBe("http_error");
+			expect(result.error.detail).toContain("fake://");
+		}
+	});
+
+	test("negative: https:// URL is not the FakeForge kind", async () => {
+		const forge = new FakeForge();
+		const result = await forge.probeIdentity("https://git.example.com");
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.kind).toBe("http_error");
+	});
+});
