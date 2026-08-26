@@ -318,7 +318,12 @@ Details on the additional checks:
   goes down. `src/ui/` is in scope as of warren-c8bd with three
   grandfathered entries. The walk skips only `src/ui/dist/`. Biome's
   `noExcessiveLinesPerFunction` rule enforces the same 500-line cap at
-  the function level.
+  the function level. `bun run scripts/check-file-sizes.ts --headroom 10`
+  reports the files with 10 lines of slack or less, and never fails
+  (warren-8746). A file at its ceiling passes every PR that touches it
+  alone. It then fails once a merge lands the union of two of them.
+  `.github/workflows/size-overshoot-report.yml` names what overshot, on
+  the PR itself.
 - **`check:debt`** (warren-7f2b) — scans `src/` and `scripts/` for
   `TODO` / `FIXME` / `HACK` / `XXX`. Any marker without a tracker
   reference on the same line fails the gate. Accepted references are
@@ -612,6 +617,9 @@ observe-only process singleton that run-lifecycle call sites emit into.
 Proof consumers are the healer (`src/healer/lifecycle.ts`) and the
 seed-close reap hook (`src/runs/reap/seed-close-lifecycle.ts`). See
 [docs/design/tier1-observation-bus.md](docs/design/tier1-observation-bus.md).
+The run-level provider retry (`src/runs/retry/provider-retry.ts`) is a
+third consumer. Its policy is in
+[docs/design/provider-retry.md](docs/design/provider-retry.md).
 
 ## Extensions
 
@@ -624,13 +632,16 @@ imports it. `check:layers` enforces both directions, because an import
 either way compiles the extension into core and makes its removal
 breaking.
 
-Two extensions ship today. The flagship is `extensions/audit-log/`
+Three extensions ship today. The flagship is `extensions/audit-log/`
 (plan pl-116e), a collector that tails run events, normalizes them
 into an append-only audit log, and exports it over
 `GET /audit-log.jsonl`. Beside it sits `extensions/judge/`
 (plan pl-17ca), which reads finished runs, judges them against the
 15-class rubric v1, stores verdicts append-only, and exports them
-over `GET /verdicts.jsonl`.
+over `GET /verdicts.jsonl`. `extensions/tracker-jira/` (warren-27d9)
+is the third. It speaks the warren-tracker/v1 protocol against Jira Cloud and holds
+its own Jira credential. Its README carries the friction list for that
+build.
 
 `extensions/audit-log/FRICTION.md` logs every place the extension
 author had to work around a missing warren surface, and that list is

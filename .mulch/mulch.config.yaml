@@ -63,6 +63,10 @@ domains:
   tracker: {}
   dispatch: {}
   tracker-port: {}
+  campaign-controller: {}
+  storage: {}
+  warren-api: {}
+  github: {}
 governance:
   max_entries: 100
   warn_entries: 150

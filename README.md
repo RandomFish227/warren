@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/4r6r5jUEFE)
 
-**[Live runs](https://app.warren.run)** · **[Quickstart](#quickstart)** · **[Documentation](docs/README.md)** · **[Demo](https://youtu.be/daa7y8g9BkM)**
+**[Live runs](https://app.warren.run)** · **[Quickstart](#quickstart)** · **[Documentation](docs/README.md)** · **[Demo](https://youtu.be/daa7y8g9BkM)** · **[Roadmap](ROADMAP.md)**
 
 </div>
 
@@ -124,6 +124,10 @@ See [Extensions](docs/design/extensions.md) for their contracts and current pack
 - [HTTP API](docs/http-api.md) and [OpenAPI](docs/openapi.yaml)
 - [TypeScript SDK](docs/sdk.md)
 - [Contributing](CONTRIBUTING.md)
+
+## Roadmap
+
+[ROADMAP.md](ROADMAP.md) owns warren's direction and sequencing. It tracks what is in flight, what comes next, what has shipped, and what stays out of core.
 
 ## Status
 
