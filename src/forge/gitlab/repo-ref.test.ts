@@ -100,6 +100,30 @@ describe("parseGitLabRepoRef", () => {
 		).toEqual({ forge: GITLAB_FORGE_KIND, key: "gitlab.example.com:8443/acme/project" });
 	});
 
+	test("survives an IPv6 authority instead of slicing into the address", () => {
+		// A naive lastIndexOf(":") strip turns bare [::1] into "[:" and the forge
+		// silently disowns a URL it owns.
+		expect(parseGitLabRepoRef("https://[::1]:8443/acme/project", "[::1]:8443")).toEqual({
+			forge: GITLAB_FORGE_KIND,
+			key: "[::1]:8443/acme/project",
+		});
+		expect(parseGitLabRepoRef("ssh://git@[::1]/acme/project.git", "[::1]:8443")).toEqual({
+			forge: GITLAB_FORGE_KIND,
+			key: "[::1]:8443/acme/project",
+		});
+		expect(parseGitLabRepoRef("https://[::1]/acme/project", "[::1]")).toEqual({
+			forge: GITLAB_FORGE_KIND,
+			key: "[::1]/acme/project",
+		});
+	});
+
+	test("yields no project when /-/ leaves fewer than two path segments", () => {
+		// Pinned deliberately: this falls out of MIN_PATH_SEGMENTS today, and the
+		// next edit to that constant must not silently change it.
+		expect(parseGitLabRepoRef("https://gitlab.com/-/profile", SAAS)).toBeNull();
+		expect(parseGitLabRepoRef("https://gitlab.com/acme/-/something", SAAS)).toBeNull();
+	});
+
 	test("disowns a path with fewer than two segments", () => {
 		expect(parseGitLabRepoRef("https://gitlab.com/project", SAAS)).toBeNull();
 		expect(parseGitLabRepoRef("https://gitlab.com/", SAAS)).toBeNull();

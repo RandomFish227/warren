@@ -227,8 +227,19 @@ function stripGitSuffix(segment: string): string {
 	return segment.endsWith(".git") ? segment.slice(0, -4) : segment;
 }
 
-/** The authority with any `:port` removed, for the ssh-family comparisons. */
+/**
+ * The authority with any `:port` removed, for the ssh-family comparisons.
+ *
+ * A naive `lastIndexOf(":")` slice corrupts an IPv6 authority — bare `[::1]`
+ * would become `[:` — and the failure mode is silent: the host stops matching
+ * and the forge disowns a URL it owns, so the project simply never registers.
+ * The port is therefore stripped only when what follows the final colon is
+ * actually a port, and never from inside a bracketed address.
+ */
 function hostWithoutPort(host: string): string {
+	if (host.endsWith("]")) return host;
 	const colon = host.lastIndexOf(":");
-	return colon === -1 ? host : host.slice(0, colon);
+	if (colon === -1) return host;
+	const port = host.slice(colon + 1);
+	return /^\d+$/.test(port) ? host.slice(0, colon) : host;
 }
