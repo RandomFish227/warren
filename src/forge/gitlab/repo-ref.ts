@@ -121,14 +121,32 @@ export function gitLabProjectPath(ref: RepoRef, host: string): string | null {
 }
 
 /**
- * Normalize an operator-configured instance URL (`WARREN_GITLAB_URL`) to the
- * authority this parser compares against: lowercased host, port preserved only
- * when it is not the scheme default.
+ * An operator-configured instance URL (`WARREN_GITLAB_URL`) in the two forms
+ * the provider needs.
  *
- * Returns `null` for input that names no host, so boot can fail loud rather
- * than construct a forge that owns nothing.
+ * `host` is the scheme-less authority the packed `RepoRef` key is built from
+ * and compared against. `origin` is `scheme://host`, which the transport needs
+ * to build an API base.
+ *
+ * Both come out of ONE parse deliberately. They differ in exactly one case — a
+ * self-hosted instance served over plain http — and deriving the origin
+ * separately by assuming https would point the transport at a host that may
+ * not answer there, while ref matching kept working. The failure would look
+ * like an unreachable API on a project that registered fine.
  */
-export function normalizeGitLabHost(instanceUrl: string): string | null {
+export interface GitLabInstanceUrl {
+	/** Lowercased authority; port preserved only when not the scheme default. */
+	readonly host: string;
+	/** `scheme://host` — the base the `/api/v4` path hangs off. */
+	readonly origin: string;
+}
+
+/**
+ * Parse an operator-configured instance URL. Returns `null` for input that
+ * names no host, so boot can fail loud rather than construct a forge that owns
+ * nothing.
+ */
+export function parseGitLabInstanceUrl(instanceUrl: string): GitLabInstanceUrl | null {
 	const trimmed = instanceUrl.trim();
 	if (trimmed === "") return null;
 	// A bare authority (`gitlab.example.com`) is what an operator most often
@@ -142,7 +160,16 @@ export function normalizeGitLabHost(instanceUrl: string): string | null {
 	}
 	if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
 	const host = parsed.host.toLowerCase();
-	return host === "" ? null : host;
+	if (host === "") return null;
+	return { host, origin: `${parsed.protocol}//${host}` };
+}
+
+/**
+ * Normalize an instance URL to the authority this parser compares against.
+ * Thin read of `parseGitLabInstanceUrl` so the scheme rule lives in one place.
+ */
+export function normalizeGitLabHost(instanceUrl: string): string | null {
+	return parseGitLabInstanceUrl(instanceUrl)?.host ?? null;
 }
 
 /** Extract the project path from any accepted grammar. */

@@ -3,6 +3,7 @@ import {
 	GITLAB_FORGE_KIND,
 	gitLabProjectPath,
 	normalizeGitLabHost,
+	parseGitLabInstanceUrl,
 	parseGitLabRepoRef,
 } from "./repo-ref.ts";
 
@@ -205,5 +206,56 @@ describe("normalizeGitLabHost", () => {
 		expect(normalizeGitLabHost("   ")).toBeNull();
 		expect(normalizeGitLabHost("ssh://gitlab.com")).toBeNull();
 		expect(normalizeGitLabHost("file:///srv")).toBeNull();
+	});
+});
+
+describe("parseGitLabInstanceUrl", () => {
+	test("yields the scheme-less host and the scheme-bearing origin together", () => {
+		expect(parseGitLabInstanceUrl("https://gitlab.com")).toEqual({
+			host: "gitlab.com",
+			origin: "https://gitlab.com",
+		});
+	});
+
+	test("preserves a plain-http scheme in the origin", () => {
+		// The whole reason host and origin come from one parse: assuming https
+		// for the origin would point the transport somewhere the ref matching
+		// never went, so the project registers and the API is unreachable.
+		expect(parseGitLabInstanceUrl("http://gitlab.internal:3000")).toEqual({
+			host: "gitlab.internal:3000",
+			origin: "http://gitlab.internal:3000",
+		});
+	});
+
+	test("a bare authority defaults to https in both halves", () => {
+		expect(parseGitLabInstanceUrl("gitlab.example.com")).toEqual({
+			host: "gitlab.example.com",
+			origin: "https://gitlab.example.com",
+		});
+	});
+
+	test("drops a default port from the origin as well as the host", () => {
+		expect(parseGitLabInstanceUrl("https://gitlab.com:443")).toEqual({
+			host: "gitlab.com",
+			origin: "https://gitlab.com",
+		});
+	});
+
+	test("returns null for input naming no host, matching normalizeGitLabHost", () => {
+		for (const bad of ["", "   ", "ssh://gitlab.com", "file:///srv"]) {
+			expect(parseGitLabInstanceUrl(bad)).toBeNull();
+			expect(normalizeGitLabHost(bad)).toBeNull();
+		}
+	});
+
+	test("normalizeGitLabHost stays a thin read of this parse", () => {
+		for (const input of [
+			"https://gitlab.com",
+			"gitlab.example.com",
+			"http://h:3000",
+			"  h:8443  ",
+		]) {
+			expect(normalizeGitLabHost(input)).toBe(parseGitLabInstanceUrl(input)?.host ?? null);
+		}
 	});
 });
