@@ -18,6 +18,12 @@
  *     `WARREN_GITHUB_APP_ID` / `WARREN_GITHUB_APP_INSTALLATION_ID` /
  *     `WARREN_GITHUB_APP_PRIVATE_KEY` triple; a missing or unparseable
  *     input throws `ForgeConfigError` at boot (fail loud, §4).
+ *   - `gitlab` → `GitLabForge` (warren-7ba8) over `WARREN_GITLAB_URL` plus a
+ *     credential read from `WARREN_GIT_TOKEN` and then `GITLAB_TOKEN`. The
+ *     URL is required and throws `ForgeConfigError` at boot when absent,
+ *     because a GitLab forge with no instance owns no clone URL and would
+ *     fail every project registration with nothing naming the cause. NOTE:
+ *     single runs only — see the plan-run limitation in the provider doc.
  *   - `fake`   → `FakeForge` with its in-memory PR store.
  *   - anything else → `UnknownForgeError` (fail loud — never silently fall
  *     back to the default, so a typo can't route runs onto the wrong forge).
@@ -25,8 +31,10 @@
  * Registry CONSTRUCTION only: threading the resolved instance through boot
  * wiring and `ServerDeps` is the next step (warren-6c4c). `parseRepoRef`
  * chaining operates over the boot-registered forges in their fixed
- * registration order (§1.1) — with one real forge registered, the chain
- * has length one.
+ * registration order (§1.1). The selector still resolves exactly ONE forge
+ * per process, so the chain has length one whichever kind is chosen; running
+ * GitHub and GitLab projects on a single instance needs the multi-instance
+ * config surface, not a second entry here (warren-f012).
  */
 
 import type { Forge } from "./contract.ts";
@@ -39,15 +47,16 @@ import {
 	GitHubAppForge,
 	loadGitHubAppCredentialsFromEnv,
 } from "./github-app/provider.ts";
+import { type GitLabConfig, GitLabForge, loadGitLabConfigFromEnv } from "./gitlab/provider.ts";
 
 /** Forge backends the selector understands. */
-export type ForgeKind = "github" | "app" | "fake";
+export type ForgeKind = "github" | "app" | "gitlab" | "fake";
 
 /** Selector default when `WARREN_FORGE` is unset — the real forge. */
 export const DEFAULT_FORGE_KIND: ForgeKind = "github";
 
 /** Every recognized `WARREN_FORGE` value (used for validation + error hints). */
-export const FORGE_KINDS: readonly ForgeKind[] = ["github", "app", "fake"];
+export const FORGE_KINDS: readonly ForgeKind[] = ["github", "app", "gitlab", "fake"];
 
 /** Minimal env surface the selector reads. */
 export type ForgeEnv = Readonly<Record<string, string | undefined>>;
@@ -93,6 +102,18 @@ export interface ForgeDeps {
 	 * constructed `GitHubAppForge` never reaches the network.
 	 */
 	readonly githubAppFetch?: typeof fetch;
+	/**
+	 * Lazy config factory for the `gitlab` arm (warren-7ba8). Optional — when
+	 * omitted the selector reads `WARREN_GITLAB_URL` and the token pair from
+	 * the same env the selection came from. A test injects a throwing factory
+	 * here to prove the other arms never touch the gitlab arm's inputs.
+	 */
+	readonly gitlabConfig?: () => GitLabConfig;
+	/**
+	 * OPTIONAL fetch seam for the `gitlab` arm — a test injects a stub so the
+	 * constructed `GitLabForge` never reaches the network.
+	 */
+	readonly gitlabFetch?: typeof fetch;
 	/**
 	 * Lazy store factory for the `fake` arm — only consulted for
 	 * `WARREN_FORGE=fake`. Optional: the `FakeForge` defaults to a fresh
@@ -140,40 +161,66 @@ function firstToken(...raw: readonly (string | undefined)[]): string {
 	return "";
 }
 
+/**
+ * Per-arm builders. One function per forge kind, so `resolveForge` stays a
+ * dispatch. Inlining all five arms pushed the switch past the project's
+ * cognitive-complexity budget the moment the gitlab arm landed, and the
+ * ceiling was right: each arm's env reading, factory defaulting, and optional
+ * spreading is its own unit of meaning.
+ */
+function buildGitHubForge(deps: ForgeDeps, env: ForgeEnv): Forge {
+	// warren-1b6f: the forge-neutral name wins, and GITHUB_TOKEN stays as
+	// the fallback, matching `src/runtime/k8s/git-tokens.ts`.
+	const tokenFactory =
+		deps.githubToken ?? (() => firstToken(env.WARREN_GIT_TOKEN, env.GITHUB_TOKEN));
+	return new GitHubForge({
+		token: tokenFactory(),
+		...(deps.githubFetch !== undefined ? { fetch: deps.githubFetch } : {}),
+		...(deps.githubCheckRuns !== undefined ? { checkRuns: deps.githubCheckRuns } : {}),
+	});
+}
+
+function buildGitHubAppForge(deps: ForgeDeps, env: ForgeEnv): Forge {
+	const credentials = (deps.githubApp ?? (() => loadGitHubAppCredentialsFromEnv(env)))();
+	return new GitHubAppForge({
+		...credentials,
+		...(deps.githubAppFetch !== undefined ? { fetch: deps.githubAppFetch } : {}),
+	});
+}
+
+function buildGitLabForge(deps: ForgeDeps, env: ForgeEnv): Forge {
+	const config = (deps.gitlabConfig ?? (() => loadGitLabConfigFromEnv(env)))();
+	return new GitLabForge({
+		...config,
+		...(deps.gitlabFetch !== undefined ? { fetch: deps.gitlabFetch } : {}),
+	});
+}
+
+function buildFakeForge(deps: ForgeDeps, env: ForgeEnv): Forge {
+	if (deps.fakeStore !== undefined) {
+		return new FakeForge({ store: deps.fakeStore() });
+	}
+	// Cross-process acceptance seam (warren-2600): the harness boots warren as
+	// a subprocess, so it drives FakeForge state transitions (markMerged &
+	// friends) by editing a JSON state file the store reloads on every read.
+	// Unset → the pure in-memory store.
+	const stateFile = env[FAKE_FORGE_STATE_FILE_ENV]?.trim();
+	if (stateFile === undefined || stateFile === "") {
+		return new FakeForge();
+	}
+	return new FakeForge({ store: new FakeForgeStore({ stateFile }) });
+}
+
 export function resolveForge(deps: ForgeDeps = {}, env: ForgeEnv = process.env): Forge {
 	const kind = resolveForgeKind(env);
 	switch (kind) {
-		case "github": {
-			// warren-1b6f: the forge-neutral name wins, and GITHUB_TOKEN stays as
-			// the fallback, matching `src/runtime/k8s/git-tokens.ts`.
-			const tokenFactory =
-				deps.githubToken ?? (() => firstToken(env.WARREN_GIT_TOKEN, env.GITHUB_TOKEN));
-			return new GitHubForge({
-				token: tokenFactory(),
-				...(deps.githubFetch !== undefined ? { fetch: deps.githubFetch } : {}),
-				...(deps.githubCheckRuns !== undefined ? { checkRuns: deps.githubCheckRuns } : {}),
-			});
-		}
-		case "app": {
-			const credentials = (deps.githubApp ?? (() => loadGitHubAppCredentialsFromEnv(env)))();
-			return new GitHubAppForge({
-				...credentials,
-				...(deps.githubAppFetch !== undefined ? { fetch: deps.githubAppFetch } : {}),
-			});
-		}
-		case "fake": {
-			if (deps.fakeStore !== undefined) {
-				return new FakeForge({ store: deps.fakeStore() });
-			}
-			// Cross-process acceptance seam (warren-2600): the harness boots
-			// warren as a subprocess, so it drives FakeForge state transitions
-			// (markMerged & friends) by editing a JSON state file the store
-			// reloads on every read. Unset → the pure in-memory store.
-			const stateFile = env[FAKE_FORGE_STATE_FILE_ENV]?.trim();
-			if (stateFile === undefined || stateFile === "") {
-				return new FakeForge();
-			}
-			return new FakeForge({ store: new FakeForgeStore({ stateFile }) });
-		}
+		case "github":
+			return buildGitHubForge(deps, env);
+		case "app":
+			return buildGitHubAppForge(deps, env);
+		case "gitlab":
+			return buildGitLabForge(deps, env);
+		case "fake":
+			return buildFakeForge(deps, env);
 	}
 }

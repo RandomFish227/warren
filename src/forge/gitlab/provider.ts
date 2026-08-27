@@ -72,6 +72,59 @@ const USER_AGENT = "warren-forge-gitlab";
  */
 const GIT_USERNAME = "oauth2";
 
+/** Env vars the registry's `gitlab` arm reads. */
+export const GITLAB_URL_ENV = "WARREN_GITLAB_URL";
+export const GITLAB_TOKEN_ENV = "GITLAB_TOKEN";
+
+/** The two inputs the `gitlab` arm needs, resolved from env at boot. */
+export interface GitLabConfig {
+	readonly instanceUrl: string;
+	readonly token: string;
+}
+
+/**
+ * The registry's default config factory for the `gitlab` arm: read the
+ * instance URL and the credential, failing loud at boot when the URL is
+ * missing.
+ *
+ * The URL is required and the token is NOT, which is deliberate rather than
+ * lax. A missing token surfaces later as `no_credential` on the first call,
+ * naming the repo it failed for — a clear, recoverable error, and the same
+ * behaviour the `github` arm has. A missing URL has no such moment: the forge
+ * would construct, claim no clone URL at all, and every project would simply
+ * fail to register with nothing naming the cause.
+ *
+ * The token order matches the `github` arm (warren-1b6f): the forge-neutral
+ * `WARREN_GIT_TOKEN` wins, with the forge-specific name as the fallback, so
+ * one variable names the git credential whatever the forge is.
+ */
+export function loadGitLabConfigFromEnv(
+	env: Readonly<Record<string, string | undefined>>,
+): GitLabConfig {
+	const instanceUrl = env[GITLAB_URL_ENV]?.trim() ?? "";
+	if (instanceUrl === "") {
+		throw new ForgeConfigError(`WARREN_FORGE=gitlab requires ${GITLAB_URL_ENV} to be set`, {
+			recoveryHint:
+				"Set WARREN_GITLAB_URL to the instance origin, e.g. https://gitlab.com or https://gitlab.example.com:8443, or select a different WARREN_FORGE.",
+		});
+	}
+	const token = firstGitLabToken(env.WARREN_GIT_TOKEN, env[GITLAB_TOKEN_ENV]);
+	return { instanceUrl, token };
+}
+
+/**
+ * The first env token that carries something, trimmed. An operator who exports
+ * `WARREN_GIT_TOKEN=""` has not chosen a neutral token, so a blank value must
+ * not shadow a valid `GITLAB_TOKEN` behind it.
+ */
+function firstGitLabToken(...raw: readonly (string | undefined)[]): string {
+	for (const value of raw) {
+		const trimmed = value?.trim();
+		if (trimmed !== undefined && trimmed !== "") return trimmed;
+	}
+	return "";
+}
+
 export interface GitLabForgeOptions {
 	/**
 	 * The instance URL (`WARREN_GITLAB_URL`), e.g. `https://gitlab.com` or a

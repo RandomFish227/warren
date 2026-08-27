@@ -10,6 +10,7 @@ import { FakeForgeStore } from "./fake/store.ts";
 import { GitHubForge } from "./github/provider.ts";
 import { type GitHubAppCredentials, GitHubAppForge } from "./github-app/provider.ts";
 import { generateTestAppKeyPair } from "./github-app/test-helpers.ts";
+import { GitLabForge } from "./gitlab/provider.ts";
 import {
 	DEFAULT_FORGE_KIND,
 	FORGE_KINDS,
@@ -28,6 +29,18 @@ const fakeArmDeps: ForgeDeps = {
 	githubToken: (): string => {
 		throw new Error("githubToken factory must not be called when WARREN_FORGE=fake");
 	},
+};
+
+const gitlabArmDeps: ForgeDeps = {
+	githubToken: (): string => {
+		throw new Error("githubToken factory must not be called when WARREN_FORGE=gitlab");
+	},
+	fakeStore: (): FakeForgeStore => {
+		throw new Error("fakeStore factory must not be called when WARREN_FORGE=gitlab");
+	},
+	gitlabFetch: (() => {
+		throw new Error("gitlab fetch must not be called at construction time");
+	}) as unknown as typeof fetch,
 };
 
 const githubArmDeps: ForgeDeps = {
@@ -52,24 +65,26 @@ describe("resolveForgeKind", () => {
 	});
 
 	test("accepts all registered kinds", () => {
-		expect(FORGE_KINDS).toEqual(["github", "app", "fake"]);
+		expect(FORGE_KINDS).toEqual(["github", "app", "gitlab", "fake"]);
 		expect(resolveForgeKind({ WARREN_FORGE: "github" })).toBe("github");
 		expect(resolveForgeKind({ WARREN_FORGE: "app" })).toBe("app");
+		expect(resolveForgeKind({ WARREN_FORGE: "gitlab" })).toBe("gitlab");
 		expect(resolveForgeKind({ WARREN_FORGE: "fake" })).toBe("fake");
 	});
 
 	test("fails loudly on an unknown value rather than falling back", () => {
-		expect(() => resolveForgeKind({ WARREN_FORGE: "gitlab" })).toThrow(UnknownForgeError);
+		expect(() => resolveForgeKind({ WARREN_FORGE: "bitbucket" })).toThrow(UnknownForgeError);
 	});
 
 	test("the unknown-kind error lists the legal values in its recoveryHint", () => {
 		try {
-			resolveForgeKind({ WARREN_FORGE: "gitlab" });
+			resolveForgeKind({ WARREN_FORGE: "bitbucket" });
 			throw new Error("unreachable");
 		} catch (e) {
 			expect(e).toBeInstanceOf(UnknownForgeError);
 			const hint = (e as UnknownForgeError).recoveryHint ?? "";
 			expect(hint).toContain("github");
+			expect(hint).toContain("gitlab");
 			expect(hint).toContain("fake");
 			expect(hint).toContain('leave it unset for "github"');
 		}
@@ -98,6 +113,102 @@ describe("resolveForge", () => {
 
 	test("constructs only the selected arm — the github arm never builds the fake store", () => {
 		expect(() => resolveForge(githubArmDeps, { WARREN_FORGE: "github" })).not.toThrow();
+	});
+
+	test("resolves GitLabForge for WARREN_FORGE=gitlab", () => {
+		const forge = resolveForge(gitlabArmDeps, {
+			WARREN_FORGE: "gitlab",
+			WARREN_GITLAB_URL: "https://gitlab.example.com",
+			GITLAB_TOKEN: "glpat-x",
+		});
+		expect(forge).toBeInstanceOf(GitLabForge);
+	});
+
+	test("the gitlab arm owns its instance host and disowns every other", () => {
+		const forge = resolveForge(gitlabArmDeps, {
+			WARREN_FORGE: "gitlab",
+			WARREN_GITLAB_URL: "https://gitlab.example.com",
+			GITLAB_TOKEN: "glpat-x",
+		});
+		expect(forge.parseRepoRef("https://gitlab.example.com/g/p.git")).not.toBeNull();
+		expect(forge.parseRepoRef("https://gitlab.com/g/p.git")).toBeNull();
+		expect(forge.parseRepoRef("https://github.com/o/r.git")).toBeNull();
+	});
+
+	test("WARREN_FORGE=gitlab without WARREN_GITLAB_URL fails loud at boot", () => {
+		expect(() => resolveForge(gitlabArmDeps, { WARREN_FORGE: "gitlab" })).toThrow(ForgeConfigError);
+	});
+
+	test("the missing-URL error names the variable and how to recover", () => {
+		try {
+			resolveForge(gitlabArmDeps, { WARREN_FORGE: "gitlab", GITLAB_TOKEN: "t" });
+			throw new Error("unreachable");
+		} catch (e) {
+			expect(e).toBeInstanceOf(ForgeConfigError);
+			expect((e as ForgeConfigError).message).toContain("WARREN_GITLAB_URL");
+			expect((e as ForgeConfigError).recoveryHint ?? "").toContain("https://gitlab.com");
+		}
+	});
+
+	test("a missing token is NOT a boot failure — it surfaces as no_credential per call", async () => {
+		const forge = resolveForge(gitlabArmDeps, {
+			WARREN_FORGE: "gitlab",
+			WARREN_GITLAB_URL: "https://gitlab.example.com",
+		});
+		const ref = forge.parseRepoRef("https://gitlab.example.com/g/p.git");
+		if (ref === null) throw new Error("unreachable");
+		const result = await forge.gitCredential(ref);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.kind).toBe("no_credential");
+	});
+
+	test("the forge-neutral WARREN_GIT_TOKEN outranks GITLAB_TOKEN (warren-1b6f)", async () => {
+		const forge = resolveForge(gitlabArmDeps, {
+			WARREN_FORGE: "gitlab",
+			WARREN_GITLAB_URL: "https://gitlab.example.com",
+			WARREN_GIT_TOKEN: "neutral",
+			GITLAB_TOKEN: "specific",
+		});
+		const ref = forge.parseRepoRef("https://gitlab.example.com/g/p.git");
+		if (ref === null) throw new Error("unreachable");
+		const result = await forge.gitCredential(ref);
+		expect(result.ok).toBe(true);
+		if (result.ok) expect(result.value.secret).toBe("neutral");
+	});
+
+	test("a blank WARREN_GIT_TOKEN does not shadow a real GITLAB_TOKEN", async () => {
+		const forge = resolveForge(gitlabArmDeps, {
+			WARREN_FORGE: "gitlab",
+			WARREN_GITLAB_URL: "https://gitlab.example.com",
+			WARREN_GIT_TOKEN: "   ",
+			GITLAB_TOKEN: "specific",
+		});
+		const ref = forge.parseRepoRef("https://gitlab.example.com/g/p.git");
+		if (ref === null) throw new Error("unreachable");
+		const result = await forge.gitCredential(ref);
+		expect(result.ok).toBe(true);
+		if (result.ok) expect(result.value.secret).toBe("specific");
+	});
+
+	test("constructs only the selected arm — gitlab never touches github or fake inputs", () => {
+		expect(() =>
+			resolveForge(gitlabArmDeps, {
+				WARREN_FORGE: "gitlab",
+				WARREN_GITLAB_URL: "https://gitlab.example.com",
+			}),
+		).not.toThrow();
+	});
+
+	test("an injected gitlabConfig factory beats the env", () => {
+		const forge = resolveForge(
+			{
+				...gitlabArmDeps,
+				gitlabConfig: () => ({ instanceUrl: "https://injected.example", token: "t" }),
+			},
+			{ WARREN_FORGE: "gitlab", WARREN_GITLAB_URL: "https://ignored.example" },
+		);
+		expect(forge.parseRepoRef("https://injected.example/g/p.git")).not.toBeNull();
+		expect(forge.parseRepoRef("https://ignored.example/g/p.git")).toBeNull();
 	});
 
 	test("WARREN_FAKE_FORGE_STATE_FILE backs the fake store with the file (warren-2600)", async () => {
