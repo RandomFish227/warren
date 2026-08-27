@@ -102,6 +102,8 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 			...(dispatcherHandle !== undefined ? { dispatcherHandle } : {}),
 			repos: deps.repos,
 			issueTracker: deps.issueTracker,
+			// warren-3e09: thread forge so createPlanRun can gate on autoMerge.
+			forge: deps.forge,
 			projectsConfig: deps.projectsConfig,
 			...(deps.spawn !== undefined ? { spawn: deps.spawn } : {}),
 			...(gitSecret !== undefined ? { gitCredential: gitSecret } : {}),

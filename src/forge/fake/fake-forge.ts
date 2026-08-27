@@ -64,6 +64,9 @@ export class FakeForge implements Forge {
 		branchDelete: true,
 		botIdentity: true,
 		credentialLifetime: "static",
+		// The store transitions PRs itself (markMerged), so the plan-run
+		// coordinator's merge poll resolves and acceptance scenarios work.
+		autoMerge: true,
 	};
 
 	/** Exposed for the seeding seams; never serialized across the seam. */

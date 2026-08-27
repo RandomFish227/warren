@@ -43,6 +43,7 @@ describe("GitHubForge capabilities", () => {
 			branchDelete: true,
 			botIdentity: false,
 			credentialLifetime: "static",
+			autoMerge: true,
 		});
 	});
 

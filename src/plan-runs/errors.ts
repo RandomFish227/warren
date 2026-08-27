@@ -33,3 +33,18 @@ export class ProjectLacksTrackerError extends WarrenError {
 export class PlanHasNoOpenChildrenError extends WarrenError {
 	readonly code = "plan_has_no_open_children";
 }
+
+/**
+ * `POST /plan-runs` rejection when the boot-resolved forge reports
+ * `capabilities.autoMerge: false` (warren-3e09). Plan-runs gate each child
+ * on the previous PR merging; warren performs that merge through the forge's
+ * ecosystem auto-merge mechanism (e.g. GitHub Actions). A forge that cannot
+ * self-merge would accept the dispatch and then time out at
+ * `parent_pr_merge_timeout` with no cause named. This error surfaces the
+ * incapacity up front so the operator can switch to a supported forge or wait
+ * for the missing capability to be implemented. HTTP 424 — the request is
+ * valid but unsatisfiable by this forge, matching the `unsupported` family.
+ */
+export class ForgeCannotAutoMergeError extends WarrenError {
+	readonly code = "forge_cannot_auto_merge";
+}

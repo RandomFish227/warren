@@ -63,6 +63,23 @@ describe("GitLabForge capabilities", () => {
 		expect(f.capabilities.botIdentity).toBe(false);
 		expect(f.capabilities.credentialLifetime).toBe("static");
 	});
+
+	test("autoMerge is false — plan-runs are refused at dispatch; single-run PR ops are unaffected (warren-3e09)", async () => {
+		// The forge has no GitHub-style auto-merge workflow. The plan-run
+		// coordinator would poll forever, so createPlanRun refuses the dispatch.
+		// Single-run operations (parseRepoRef, openPullRequest) are not gated.
+		const { forge: f } = forge([jsonResponse(201, MR_JSON)]);
+		expect(f.capabilities.autoMerge).toBe(false);
+		// openPullRequest is the single-run PR seam — it must keep working.
+		const r = ref(f);
+		const result = await f.openPullRequest(r, {
+			title: "warren: run_1",
+			body: "",
+			headBranch: "warren/run_1",
+			baseBranch: "main",
+		});
+		expect(result.ok).toBe(true);
+	});
 });
 
 describe("GitLabForge.parseRepoRef", () => {

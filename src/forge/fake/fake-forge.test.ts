@@ -55,6 +55,7 @@ describe("FakeForge capabilities", () => {
 			branchDelete: true,
 			botIdentity: true,
 			credentialLifetime: "static",
+			autoMerge: true,
 		});
 	});
 });
