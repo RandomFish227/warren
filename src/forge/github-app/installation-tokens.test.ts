@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createSecretKey } from "node:crypto";
-import { jsonResponse, recordingFetch } from "../github/test-helpers.ts";
+import { jsonResponse, recordingFetch } from "../http/test-helpers.ts";
 import {
 	INSTALLATION_TOKEN_EXPIRY_MARGIN_MS,
 	InstallationTokenSource,

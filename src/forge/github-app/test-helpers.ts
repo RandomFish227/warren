@@ -7,7 +7,7 @@
 
 import { generateKeyPairSync } from "node:crypto";
 import { stubGitHubServer } from "../github/stub-server.ts";
-import { jsonResponse } from "../github/test-helpers.ts";
+import { jsonResponse } from "../http/test-helpers.ts";
 
 /** A fresh RSA keypair per call — PEM strings, ready for the provider. */
 export function generateTestAppKeyPair(): { publicKeyPem: string; privateKeyPem: string } {

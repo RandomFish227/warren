@@ -46,8 +46,8 @@ import { ForgeConfigError } from "../errors.ts";
 import { GITHUB_API_BASE } from "../github/headers.ts";
 import { requestGitHub } from "../github/http.ts";
 import { GitHubForge, toForgeError } from "../github/provider.ts";
-import { readJson } from "../github/readers.ts";
 import { GITHUB_FORGE_KIND, parseGitHubRepoRef } from "../github/repo-ref.ts";
+import { readJson } from "../http/readers.ts";
 import { InstallationTokenSource } from "./installation-tokens.ts";
 import { mintGitHubAppJwt, parseGitHubAppPrivateKey } from "./jwt.ts";
 

@@ -1,5 +1,5 @@
 /**
- * Installation-token cache — the App mode's `GitHubForgeTokenSource`
+ * Installation-token cache — the App mode's `ForgeTokenSource`
  * (forge-contract.md §4: "It caches a token until `expiresAt` minus a
  * safety margin, then re-mints").
  *
@@ -28,8 +28,8 @@ import type { ForgeResult } from "../contract.ts";
 import { GITHUB_API_BASE } from "../github/headers.ts";
 import { requestGitHub } from "../github/http.ts";
 import { toForgeError } from "../github/provider.ts";
-import { readJson } from "../github/readers.ts";
-import type { GitHubCredentialSecret, GitHubForgeTokenSource } from "../github/token-source.ts";
+import { readJson } from "../http/readers.ts";
+import type { ForgeCredentialSecret, ForgeTokenSource } from "../http/token-source.ts";
 import { mintGitHubAppJwt } from "./jwt.ts";
 
 const USER_AGENT = "warren-forge-github-app";
@@ -68,7 +68,7 @@ interface AccessTokenResponseJson {
 	readonly expires_at?: unknown;
 }
 
-export class InstallationTokenSource implements GitHubForgeTokenSource {
+export class InstallationTokenSource implements ForgeTokenSource {
 	private readonly options: InstallationTokenSourceOptions;
 	private readonly fetch: typeof fetch;
 	private readonly now: () => number;
@@ -89,11 +89,11 @@ export class InstallationTokenSource implements GitHubForgeTokenSource {
 	 * the probe always trades a fresh JWT. The minted token still lands
 	 * in the cache, so a probe tick doubles as a cache warmer.
 	 */
-	async mintFresh(): Promise<ForgeResult<GitHubCredentialSecret>> {
+	async mintFresh(): Promise<ForgeResult<ForgeCredentialSecret>> {
 		return this.reMint();
 	}
 
-	async mint(): Promise<ForgeResult<GitHubCredentialSecret>> {
+	async mint(): Promise<ForgeResult<ForgeCredentialSecret>> {
 		const cached = this.cached;
 		if (cached !== null && this.now() < cached.expiresAt - this.marginMs) {
 			return { ok: true, value: { secret: cached.installationToken, expiresAt: cached.expiresAt } };
@@ -101,7 +101,7 @@ export class InstallationTokenSource implements GitHubForgeTokenSource {
 		return this.reMint();
 	}
 
-	private async reMint(): Promise<ForgeResult<GitHubCredentialSecret>> {
+	private async reMint(): Promise<ForgeResult<ForgeCredentialSecret>> {
 		let jwt: string;
 		try {
 			jwt = mintGitHubAppJwt({

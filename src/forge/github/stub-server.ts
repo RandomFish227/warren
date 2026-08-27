@@ -10,7 +10,7 @@
  * each under the cognitive-complexity budget.
  */
 
-import { jsonResponse } from "./test-helpers.ts";
+import { jsonResponse } from "../http/test-helpers.ts";
 
 interface StubPr {
 	number: number;

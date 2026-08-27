@@ -1,30 +1,30 @@
 import { describe, expect, test } from "bun:test";
-import type { GitHubHttpError } from "./errors.ts";
+import type { ForgeHttpError } from "./errors.ts";
 import {
-	isTransientGitHubError,
+	isTransientForgeError,
 	MAX_RETRY_AFTER_MS,
 	retryDelayFor,
-	withGitHubRetry,
+	withForgeRetry,
 } from "./retry.ts";
 
-function err(overrides: Partial<GitHubHttpError>): GitHubHttpError {
+function err(overrides: Partial<ForgeHttpError>): ForgeHttpError {
 	return { kind: "http_error", status: 500, retryAfterMs: null, message: "m", ...overrides };
 }
 
-describe("isTransientGitHubError", () => {
+describe("isTransientForgeError", () => {
 	test("retries network, 5xx, and rate_limited (the pr-merge direction)", () => {
-		expect(isTransientGitHubError(err({ kind: "network", status: 0 }))).toBe(true);
-		expect(isTransientGitHubError(err({ status: 500 }))).toBe(true);
-		expect(isTransientGitHubError(err({ status: 503 }))).toBe(true);
-		expect(isTransientGitHubError(err({ kind: "rate_limited", status: 429 }))).toBe(true);
+		expect(isTransientForgeError(err({ kind: "network", status: 0 }))).toBe(true);
+		expect(isTransientForgeError(err({ status: 500 }))).toBe(true);
+		expect(isTransientForgeError(err({ status: 503 }))).toBe(true);
+		expect(isTransientForgeError(err({ kind: "rate_limited", status: 429 }))).toBe(true);
 	});
 
 	test("treats other 4xx as fatal", () => {
-		expect(isTransientGitHubError(err({ kind: "unauthorized", status: 401 }))).toBe(false);
-		expect(isTransientGitHubError(err({ kind: "forbidden", status: 403 }))).toBe(false);
-		expect(isTransientGitHubError(err({ kind: "not_found", status: 404 }))).toBe(false);
-		expect(isTransientGitHubError(err({ kind: "conflict", status: 422 }))).toBe(false);
-		expect(isTransientGitHubError(err({ status: 400 }))).toBe(false);
+		expect(isTransientForgeError(err({ kind: "unauthorized", status: 401 }))).toBe(false);
+		expect(isTransientForgeError(err({ kind: "forbidden", status: 403 }))).toBe(false);
+		expect(isTransientForgeError(err({ kind: "not_found", status: 404 }))).toBe(false);
+		expect(isTransientForgeError(err({ kind: "conflict", status: 422 }))).toBe(false);
+		expect(isTransientForgeError(err({ status: 400 }))).toBe(false);
 	});
 });
 
@@ -42,12 +42,12 @@ describe("retryDelayFor", () => {
 	});
 });
 
-describe("withGitHubRetry", () => {
+describe("withForgeRetry", () => {
 	const noSleep = () => Promise.resolve();
 
 	test("returns the first success without retrying", async () => {
 		let calls = 0;
-		const result = await withGitHubRetry(
+		const result = await withForgeRetry(
 			async () => {
 				calls += 1;
 				return { ok: true as const, value: 42 };
@@ -60,7 +60,7 @@ describe("withGitHubRetry", () => {
 
 	test("retries a transient failure up to maxRetries, then surfaces the last error", async () => {
 		let calls = 0;
-		const result = await withGitHubRetry(
+		const result = await withForgeRetry(
 			async () => {
 				calls += 1;
 				return { ok: false as const, error: err({ kind: "network", status: 0 }) };
@@ -73,7 +73,7 @@ describe("withGitHubRetry", () => {
 
 	test("returns a fatal 4xx immediately with no retry", async () => {
 		let calls = 0;
-		const result = await withGitHubRetry(
+		const result = await withForgeRetry(
 			async () => {
 				calls += 1;
 				return { ok: false as const, error: err({ kind: "not_found", status: 404 }) };
@@ -89,7 +89,7 @@ describe("withGitHubRetry", () => {
 
 	test("recovers when a later attempt succeeds", async () => {
 		let calls = 0;
-		const result = await withGitHubRetry(
+		const result = await withForgeRetry(
 			async () => {
 				calls += 1;
 				if (calls < 2) return { ok: false as const, error: err({ status: 502 }) };
@@ -103,7 +103,7 @@ describe("withGitHubRetry", () => {
 
 	test("waits the Retry-After hint on rate_limited attempts", async () => {
 		const waits: number[] = [];
-		const result = await withGitHubRetry(
+		const result = await withForgeRetry(
 			async () => ({
 				ok: false as const,
 				error: err({ kind: "rate_limited", status: 429, retryAfterMs: 1_500 }),
@@ -123,7 +123,7 @@ describe("withGitHubRetry", () => {
 
 	test("maxRetries: 0 disables retrying", async () => {
 		let calls = 0;
-		await withGitHubRetry(
+		await withForgeRetry(
 			async () => {
 				calls += 1;
 				return { ok: false as const, error: err({ status: 500 }) };

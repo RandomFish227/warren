@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { jsonResponse, recordingFetch } from "../http/test-helpers.ts";
 import { requestGitHub } from "./http.ts";
-import { jsonResponse, recordingFetch } from "./test-helpers.ts";
 
 const NO_RETRY = { maxRetries: 0 };
 

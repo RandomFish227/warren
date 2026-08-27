@@ -1,8 +1,11 @@
 /**
- * Shared GitHub-transport test doubles, promoted from
- * `src/runs/pr.test-helpers.ts` (plan pl-d1c9 step 1) so every consumer of
- * `src/forge/github/` tests against the same fake. The legacy path
- * re-exports these symbols so existing `src/runs/` tests keep resolving.
+ * Shared forge-transport test doubles, promoted from
+ * `src/runs/pr.test-helpers.ts` (plan pl-d1c9 step 1) so every consumer of the
+ * forge transport tests against the same fake. The legacy path re-exports
+ * these symbols so existing `src/runs/` tests keep resolving.
+ *
+ * Nothing here names a forge, so the GitLab arm shares the doubles rather than
+ * standing up a second `recordingFetch`.
  *
  * `recordingFetch` replays canned `Response`s (or thunks for per-attempt
  * variety, e.g. a throw-then-succeed retry test) while capturing each

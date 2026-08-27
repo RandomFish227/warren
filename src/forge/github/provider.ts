@@ -50,16 +50,16 @@ import type {
 	PullRequestState,
 	RepoRef,
 } from "../contract.ts";
-import type { GitHubHttpError } from "./errors.ts";
+import type { ForgeHttpError } from "../http/errors.ts";
+import { readJson, readText } from "../http/readers.ts";
+import {
+	type ForgeCredentialSecret,
+	type ForgeTokenSource,
+	StaticTokenSource,
+} from "../http/token-source.ts";
 import { GITHUB_API_BASE } from "./headers.ts";
 import { requestGitHub } from "./http.ts";
-import { readJson, readText } from "./readers.ts";
 import { GITHUB_FORGE_KIND, parseGitHubRepoRef } from "./repo-ref.ts";
-import {
-	type GitHubCredentialSecret,
-	type GitHubForgeTokenSource,
-	StaticGitHubTokenSource,
-} from "./token-source.ts";
 
 export { GITHUB_FORGE_KIND } from "./repo-ref.ts";
 
@@ -76,7 +76,7 @@ export interface GitHubForgeOptions {
 	 * provider's installation-token cache implements it. When set, every API
 	 * method mints immediately before its request instead of reading `token`.
 	 */
-	readonly tokenSource?: GitHubForgeTokenSource;
+	readonly tokenSource?: ForgeTokenSource;
 	/** Injected fetch seam; defaults to `globalThis.fetch`. */
 	readonly fetch?: typeof fetch;
 	/**
@@ -108,7 +108,7 @@ function err<T>(error: ForgeError): ForgeResult<T> {
  * rename. Exported for the App provider's installation-token mint, which
  * rides the same transport and maps its failures identically.
  */
-export function toForgeError(error: GitHubHttpError): ForgeError {
+export function toForgeError(error: ForgeHttpError): ForgeError {
 	const forgeError: ForgeError = { kind: error.kind, status: error.status, detail: error.message };
 	if (error.kind === "rate_limited" && error.retryAfterMs !== null) {
 		return { ...forgeError, retryAfterMs: error.retryAfterMs };
@@ -136,11 +136,11 @@ function prWebUrl(json: GitHubPrJson): string | null {
 export class GitHubForge implements Forge {
 	readonly capabilities: ForgeCapabilities;
 
-	private readonly tokens: GitHubForgeTokenSource;
+	private readonly tokens: ForgeTokenSource;
 	private readonly fetch: typeof fetch;
 
 	constructor(options: GitHubForgeOptions) {
-		this.tokens = options.tokenSource ?? new StaticGitHubTokenSource(options.token ?? "");
+		this.tokens = options.tokenSource ?? new StaticTokenSource(options.token ?? "", "GitHub");
 		this.fetch = options.fetch ?? globalThis.fetch;
 		this.capabilities = {
 			checkRuns: options.checkRuns ?? true,
@@ -372,7 +372,7 @@ export class GitHubForge implements Forge {
 	 * A `no_credential` miss is re-detailed with the repo ref so the error
 	 * names the operation it failed, matching the pre-source behavior.
 	 */
-	private async mint(ref: RepoRef): Promise<ForgeResult<GitHubCredentialSecret>> {
+	private async mint(ref: RepoRef): Promise<ForgeResult<ForgeCredentialSecret>> {
 		const minted = await this.tokens.mint();
 		if (minted.ok) return minted;
 		if (minted.error.kind === "no_credential") {

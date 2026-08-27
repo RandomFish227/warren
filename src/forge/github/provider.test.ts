@@ -5,9 +5,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { jsonResponse, recordingFetch } from "../http/test-helpers.ts";
 import { GITHUB_API_BASE } from "./headers.ts";
 import { GitHubForge } from "./provider.ts";
-import { jsonResponse, recordingFetch } from "./test-helpers.ts";
 
 const REF = { forge: "github", key: "github.com/octo/widget" } as const;
 const DRAFT = {
