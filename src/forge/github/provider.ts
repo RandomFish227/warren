@@ -151,6 +151,7 @@ export class GitHubForge implements Forge {
 			// names commits via WARREN_GIT_AUTHOR_* until App mode ships.
 			botIdentity: false,
 			credentialLifetime: "static",
+			autoMerge: true,
 		};
 	}
 

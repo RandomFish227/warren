@@ -107,6 +107,7 @@ export class GitHubAppForge implements Forge {
 		branchDelete: true,
 		botIdentity: true,
 		credentialLifetime: "short-lived",
+		autoMerge: true,
 	};
 
 	private readonly appId: string;

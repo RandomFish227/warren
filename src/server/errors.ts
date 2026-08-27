@@ -34,7 +34,11 @@ import {
 	ValidationError,
 	WarrenError,
 } from "../core/errors.ts";
-import { PlanHasNoOpenChildrenError, ProjectLacksTrackerError } from "../plan-runs/errors.ts";
+import {
+	ForgeCannotAutoMergeError,
+	PlanHasNoOpenChildrenError,
+	ProjectLacksTrackerError,
+} from "../plan-runs/errors.ts";
 import { ProjectUnavailableError } from "../projects/errors.ts";
 import { AgentSchemaError } from "../registry/errors.ts";
 import { RunSpawnError } from "../runs/errors.ts";
@@ -218,6 +222,9 @@ function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof ValidationError) return 400;
 	if (err instanceof ProjectLacksTrackerError) return 400;
 	if (err instanceof PlanHasNoOpenChildrenError) return 400;
+	// warren-3e09: 424 matches the `unsupported` ForgeError family — the
+	// request is valid but unsatisfiable by this forge configuration.
+	if (err instanceof ForgeCannotAutoMergeError) return 424;
 	if (err instanceof StateTransitionError) return 409;
 	// Provider-neutral runtime errors (warren-36cb): K8sProvider transport
 	// failures ride `RuntimeUnreachableError`; run-not-found maps to 404 and a

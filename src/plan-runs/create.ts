@@ -34,13 +34,18 @@ import type { PlanRunSource, PlanStatus } from "../core/wire.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { CreatePlanRunResult } from "../db/repos/plan-runs.ts";
 import type { ProjectRow } from "../db/schema.ts";
+import type { Forge } from "../forge/contract.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { refreshProject } from "../projects/index.ts";
 import type { IssueTracker, PlanCapableTracker, TrackerContext } from "../tracker/contract.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import type { GitSpawnCredential } from "../workspace/git/credential-env.ts";
-import { PlanHasNoOpenChildrenError, ProjectLacksTrackerError } from "./errors.ts";
+import {
+	ForgeCannotAutoMergeError,
+	PlanHasNoOpenChildrenError,
+	ProjectLacksTrackerError,
+} from "./errors.ts";
 
 export const PLAN_RUN_ACCEPTED_PLAN_STATUSES: readonly PlanStatus[] = [
 	"approved",
@@ -81,6 +86,13 @@ export interface CreatePlanRunOrchestrationInput {
 	readonly repos: Repos;
 	/** Undefined ⇒ ValidationError — plan-runs require an issue tracker. */
 	readonly issueTracker: IssueTracker | undefined;
+	/**
+	 * Boot-resolved forge (warren-3e09). When provided, `createPlanRun`
+	 * checks `capabilities.autoMerge` and refuses the dispatch if false —
+	 * plan-runs require a forge whose ecosystem can merge PRs automatically.
+	 * Omitting it (legacy or test paths) skips the gate.
+	 */
+	readonly forge?: Forge;
 	/** Git spawn seam. When wired, the host clone is refreshed before the plan walk (warren-6d60). */
 	readonly spawn?: SpawnFn;
 	readonly projectsConfig: ProjectsConfig;
@@ -289,6 +301,22 @@ async function requireTrackedProject(
 export async function createPlanRun(
 	input: CreatePlanRunOrchestrationInput,
 ): Promise<CreatePlanRunResult> {
+	// warren-3e09: refuse up front if the forge cannot self-merge PRs.
+	// Plan-runs gate each child on the previous PR merging via the forge's
+	// ecosystem auto-merge mechanism (e.g. GitHub Actions). A forge with
+	// autoMerge:false has no such mechanism and would silently time out.
+	if (input.forge !== undefined && !input.forge.capabilities.autoMerge) {
+		throw new ForgeCannotAutoMergeError(
+			"plan-runs require a forge whose ecosystem can auto-merge pull requests; " +
+				"the configured forge reports autoMerge:false — dispatch refused to avoid a silent timeout",
+			{
+				recoveryHint:
+					"use a GitHub project (WARREN_FORGE=github or WARREN_FORGE=app), or wait for " +
+					"GitLab merge-when-pipeline-succeeds support (warren-75e8)",
+			},
+		);
+	}
+
 	if (input.promptTemplate !== undefined) assertPlanRunPromptTemplate(input.promptTemplate);
 
 	const { project, tracker } = await requireTrackedProject(input);

@@ -22,15 +22,26 @@
  * API (§6.7). The domain degrades per §5 either way: the CI-fixer poller stays
  * idle and the trigger emits one notice per project.
  *
- * PLAN-RUN LIMITATION: this provider supports SINGLE runs. A plan-run gates
- * each child on the previous PR merging, and warren performs that merge
- * through GitHub's auto-merge workflow rather than through the seam — which is
- * why the contract deliberately has no `mergePullRequest`. A GitLab project
- * has no such workflow, so nothing transitions the MR and the plan-run waits
- * to `parent_pr_merge_timeout`. Closing this needs either a GitLab
- * merge-when-pipeline-succeeds call behind a new capability flag, or a
- * dispatch-time guard that refuses a plan-run on a forge that cannot
- * self-merge. Tracked on warren-75e8.
+ * PLAN-RUN LIMITATION: this provider supports SINGLE runs only.
+ * `capabilities.autoMerge` is false here. A plan-run gates each child on the
+ * previous PR merging; warren performs that merge through GitHub's auto-merge
+ * workflow, not through the seam (which is why the contract deliberately has
+ * no `mergePullRequest`). A GitLab project has no such workflow, so dispatch
+ * is refused up front with `ForgeCannotAutoMergeError` (HTTP 424) rather than
+ * accepted and left to time out at `parent_pr_merge_timeout`. Filling this gap
+ * needs a GitLab merge-when-pipeline-succeeds call added here and
+ * `autoMerge` flipped to true. Tracked on warren-75e8.
+ *
+ * NESTED-GROUP LAYOUT COLLISION (DO NOT FIX HERE): a project clones to
+ * `<projectsRoot>/<owner>/<name>`, and `parseForgeOwnedUrl`
+ * (`src/projects/url.ts`) derives those two segments from the LAST TWO path
+ * segments of the clone URL. GitLab paths are N segments deep, so
+ * `group-a/sub/project` and `group-b/sub/project` both lay out as
+ * `sub/project` and would collide. The collision fails loudly
+ * (`cloneProjectRepo` refuses an existing target path, `clone.ts:156`), so no
+ * data is lost, but the error names a path that mentions neither group. Fixing
+ * this needs the seam to expose a ref's layout path — a Forge contract change
+ * tracked separately.
  */
 
 import type {
@@ -181,6 +192,9 @@ export class GitLabForge implements Forge {
 			// The token authorizes; it does not name the author (§6.8).
 			botIdentity: false,
 			credentialLifetime: "static",
+			// GitLab has no GitHub-style auto-merge workflow — see PLAN-RUN
+			// LIMITATION above. Single runs are unaffected.
+			autoMerge: false,
 		};
 	}
 

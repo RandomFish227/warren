@@ -11,11 +11,16 @@ import type {
 } from "../core/wire.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
+import type { Forge } from "../forge/contract.ts";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "../projects/clone.ts";
 import type { IssueTracker, PlanCapableTracker } from "../tracker/contract.ts";
 import { SeedsTracker } from "../tracker/seeds-tracker.ts";
 import { createPlanRun } from "./create.ts";
-import { PlanHasNoOpenChildrenError, ProjectLacksTrackerError } from "./errors.ts";
+import {
+	ForgeCannotAutoMergeError,
+	PlanHasNoOpenChildrenError,
+	ProjectLacksTrackerError,
+} from "./errors.ts";
 
 /* ----------------------------------------------------------------------- */
 /* Stubs (mirror the seeds CLI's wire envelopes without shelling out)       */
@@ -332,6 +337,35 @@ describe("createPlanRun", () => {
 				issues: ["wa-a", "wa-missing"],
 			}),
 		).rejects.toThrow();
+	});
+
+	/* ----------- forge autoMerge gate (warren-3e09) ----------- */
+
+	test("refuses plan-run dispatch when the forge cannot auto-merge (warren-3e09)", async () => {
+		// A forge with autoMerge:false (e.g. GitLabForge) is refused at dispatch
+		// rather than accepted and left to time out at parent_pr_merge_timeout.
+		const noAutoMergeForge = {
+			capabilities: { autoMerge: false },
+		} as unknown as Forge;
+		await expect(createPlanRun({ ...baseInput(), forge: noAutoMergeForge })).rejects.toBeInstanceOf(
+			ForgeCannotAutoMergeError,
+		);
+	});
+
+	test("single runs are unaffected — autoMerge gate only fires in createPlanRun (warren-3e09)", async () => {
+		// A forge with autoMerge:false does NOT block a plan-run when the forge
+		// field is absent (backward compat / test paths). The single-run path
+		// (spawnRun) never calls createPlanRun, so it is structurally unaffected.
+		const result = await createPlanRun({ ...baseInput() });
+		expect(result.planRun.state).toBe("queued");
+	});
+
+	test("plan-run is accepted when forge supports auto-merge (warren-3e09)", async () => {
+		const autoMergeForge = {
+			capabilities: { autoMerge: true },
+		} as unknown as Forge;
+		const result = await createPlanRun({ ...baseInput(), forge: autoMergeForge });
+		expect(result.planRun.state).toBe("queued");
 	});
 });
 

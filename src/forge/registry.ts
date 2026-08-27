@@ -29,12 +29,11 @@
  *     back to the default, so a typo can't route runs onto the wrong forge).
  *
  * Registry CONSTRUCTION only: threading the resolved instance through boot
- * wiring and `ServerDeps` is the next step (warren-6c4c). `parseRepoRef`
- * chaining operates over the boot-registered forges in their fixed
- * registration order (§1.1). The selector still resolves exactly ONE forge
- * per process, so the chain has length one whichever kind is chosen; running
- * GitHub and GitLab projects on a single instance needs the multi-instance
- * config surface, not a second entry here (warren-f012).
+ * wiring and `ServerDeps` is the next step (warren-6c4c). The selector
+ * resolves exactly ONE forge per process. `parseRepoRef` returning null
+ * therefore means "this process's forge does not own the URL" — no chain
+ * walker exists. Running GitHub and GitLab projects on a single instance
+ * needs the multi-instance config surface, not a second entry here (warren-f012).
  */
 
 import type { Forge } from "./contract.ts";

@@ -165,6 +165,19 @@ export interface ForgeCapabilities {
 	botIdentity: boolean;
 	/** drives the §4 re-mint: "static" skips it, "short-lived" requires it */
 	credentialLifetime: "static" | "short-lived";
+	/**
+	 * The forge's ecosystem can merge pull requests without a seam call —
+	 * GitHub's auto-merge workflow is the canonical example. A plan-run gates
+	 * each child on the previous PR merging; a forge with `autoMerge: false`
+	 * has no such mechanism, so nothing would transition the PR and the
+	 * coordinator would wait until `parent_pr_merge_timeout`. Dispatch is
+	 * refused up front rather than silently timing out. Single runs are
+	 * unaffected — they only need push + openPullRequest, both of which a
+	 * GitLab forge provides. (GitLabForge: false; GitHub*: true; FakeForge:
+	 * true — the store transitions PRs itself and acceptance scenarios depend
+	 * on that.)
+	 */
+	autoMerge: boolean;
 }
 
 /**

@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { toForgeError, toPullRequestRef, toPullRequestState } from "./merge-requests.ts";
+import { jsonResponse, recordingFetch } from "../http/test-helpers.ts";
+import type { GitLabCallContext } from "./merge-requests.ts";
+import {
+	createMergeRequest,
+	toForgeError,
+	toPullRequestRef,
+	toPullRequestState,
+} from "./merge-requests.ts";
 
 describe("toPullRequestRef", () => {
 	test("uses iid — the per-project number — and never the global id", () => {
@@ -84,6 +91,49 @@ describe("toPullRequestState", () => {
 			headCommit: "",
 			baseBranch: "",
 		});
+	});
+});
+
+describe("createMergeRequest — 409 duplicate recovery", () => {
+	const BASE_CTX: GitLabCallContext = {
+		apiBase: "https://gitlab.example.com/api/v4",
+		projectPath: "group/project",
+		token: "glpat-x",
+		userAgent: "warren-forge-gitlab",
+		fetch: globalThis.fetch,
+	};
+
+	const LOCKED_MR = {
+		iid: 7,
+		state: "locked",
+		web_url: "https://gitlab.example.com/group/project/-/merge_requests/7",
+		source_branch: "warren/run_1",
+		target_branch: "main",
+		sha: "deadbeef",
+	};
+
+	test("409 recovery finds a LOCKED MR — GitLab locks an MR while a merge is in flight", async () => {
+		// GitLab flips an MR to `locked` while a merge is in flight. A
+		// re-dispatch racing that window hits 409 (duplicate source branch)
+		// and the recovery path calls findMergeRequest. matchesQueryState
+		// treats `locked` as `open`, so the recovery resolves to the locked MR
+		// rather than returning null and surfacing a conflict error.
+		const { fetch } = recordingFetch([
+			jsonResponse(409, { message: "Another open merge request already exists" }),
+			jsonResponse(200, [LOCKED_MR]),
+		]);
+		const ctx = { ...BASE_CTX, fetch };
+		const result = await createMergeRequest(ctx, {
+			title: "warren: run_1",
+			body: "",
+			headBranch: "warren/run_1",
+			baseBranch: "main",
+		});
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.value.number).toBe(7);
+			expect(result.value.key).toBe("group/project!7");
+		}
 	});
 });
 
