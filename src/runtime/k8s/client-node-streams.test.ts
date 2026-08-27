@@ -124,12 +124,7 @@ describe("@kubernetes/client-node stream compatibility", () => {
 
 		controller.abort();
 		await waitFor(() => doneCount === 1);
-		// v2 wires `body.on('error', doneCallOnce)` before `body.on('close', …)`.
-		// On Bun ≤ 1.2 the abort signal reaches 'close' first → done(null).
-		// On Bun ≥ 1.3 the undici body fires 'error' first with a DOMException
-		// AbortError → done(DOMException). Both are clean client-abort outcomes.
-		expect(
-			doneError === null || (doneError instanceof Error && doneError.name === "AbortError"),
-		).toBeTrue();
+		// v2 closes Readable.fromWeb cleanly before its abort error reaches `done`.
+		expect(doneError).toBeNull();
 	});
 });
