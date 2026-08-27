@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **47**.
+Total routes: **50**.
 
 ## /agents
 
@@ -35,6 +35,7 @@ Total routes: **47**.
 
 | Method | Pattern | Handler | Notes |
 | --- | --- | --- | --- |
+| `GET` | `/events` | `listEventsHandler` | pl-7e38 step 15 (warren-5eec): cross-run Event explorer query, readPublic with the same per-row `projectEvent` reduction as `/runs/:id/events`. |
 | `GET` | `/events/stream` | `streamLifecycleEventsHandler` | warren-f566: the global lifecycle notification stream (NDJSON, one `{runId, hook, state, ts}` line per lifecycle transition). The list pages hold ONE connection per tab and debounce-invalidate their list queries instead of polling /runs every 5s. `?follow=0` is a probe shorthand (immediate clean close, empty body). Operator-gated — a public spectator never gets a held-open feed of every run id on the instance (scenario 39); it stays on the fallback poll. |
 
 ## /github-app
@@ -51,11 +52,23 @@ Total routes: **47**.
 | --- | --- | --- | --- |
 | `GET` | `/healthz` | `healthzHandler` |  |
 
+## /instance
+
+| Method | Pattern | Handler | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/instance` | `instanceFactsHandler` | warren-2eec: read-only instance facts for the operator console. The body is a boot facts allowlist; spectators get the reduced projection (src/instance/facts.ts). Never secrets or connection strings. |
+
 ## /metrics
 
 | Method | Pattern | Handler | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/metrics` | `metricsHandler` |  |
+
+## /ops
+
+| Method | Pattern | Handler | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/ops/overview` | `opsOverviewHandler` | pl-7e38 step 12 (warren-d850): one-poll control-plane snapshot for the Operations dashboard. `readPublic` with a reduced projection — a spectator sees run counts only (see ./ops-overview.ts). |
 
 ## /plan-runs
 
