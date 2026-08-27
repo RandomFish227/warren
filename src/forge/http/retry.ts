@@ -1,5 +1,9 @@
 /**
- * GitHub REST transport — the one retry policy.
+ * Forge REST transport — the one retry policy.
+ *
+ * Provider-neutral since the GitLab arm arrived: the direction below is a
+ * statement about HTTP, not about GitHub. Extracted from
+ * `src/forge/github/retry.ts` unchanged apart from the rename.
  *
  * Plan pl-d1c9 step 1, docs/design/forge-contract.md §6.5. The four
  * pre-consolidation policies disagreed in *direction*:
@@ -20,13 +24,13 @@
  * Delays default to pr-merge's short fixed 500ms with a `Retry-After`
  * override capped at 60s, since the primary transient caller is a
  * tick-driven poller whose outer budget is the real bound. Callers tune
- * via `GitHubRetryOptions` (pr-open's 1s/2s/4s ladder can be expressed
+ * via `ForgeRetryOptions` (pr-open's 1s/2s/4s ladder can be expressed
  * as `delayMs` + linear attempts when it migrates in plan step 4).
  */
 
-import type { GitHubHttpError } from "./errors.ts";
+import type { ForgeHttpError } from "./errors.ts";
 
-export interface GitHubRetryOptions {
+export interface ForgeRetryOptions {
 	/** Retries after the initial attempt (default 2 → 3 total attempts). */
 	readonly maxRetries?: number;
 	/** Fixed delay between attempts in ms (default 500). */
@@ -46,14 +50,14 @@ const DEFAULT_RETRY_DELAY_MS = 500;
 export const MAX_RETRY_AFTER_MS = 60_000;
 
 /** True when the failure is worth a transport-level retry. */
-export function isTransientGitHubError(error: GitHubHttpError): boolean {
+export function isTransientForgeError(error: ForgeHttpError): boolean {
 	if (error.kind === "rate_limited") return true;
 	if (error.kind === "network") return true;
 	return error.status >= 500;
 }
 
 /** Delay before the next attempt: the `Retry-After` hint when present and sane. */
-export function retryDelayFor(error: GitHubHttpError, fallbackMs: number): number {
+export function retryDelayFor(error: ForgeHttpError, fallbackMs: number): number {
 	if (error.kind !== "rate_limited" || error.retryAfterMs === null) return fallbackMs;
 	return Math.min(error.retryAfterMs, MAX_RETRY_AFTER_MS);
 }
@@ -64,20 +68,20 @@ export function retryDelayFor(error: GitHubHttpError, fallbackMs: number): numbe
  * so the policy composes with the result-union convention the callers
  * already use.
  */
-export async function withGitHubRetry<T>(
-	attempt: () => Promise<{ ok: true; value: T } | { ok: false; error: GitHubHttpError }>,
-	options: GitHubRetryOptions = {},
-): Promise<{ ok: true; value: T } | { ok: false; error: GitHubHttpError }> {
+export async function withForgeRetry<T>(
+	attempt: () => Promise<{ ok: true; value: T } | { ok: false; error: ForgeHttpError }>,
+	options: ForgeRetryOptions = {},
+): Promise<{ ok: true; value: T } | { ok: false; error: ForgeHttpError }> {
 	const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
 	const delayMs = options.delayMs ?? DEFAULT_RETRY_DELAY_MS;
 	const sleep = options.sleep ?? defaultSleep;
 
-	let last: GitHubHttpError | null = null;
+	let last: ForgeHttpError | null = null;
 	for (let i = 0; i <= maxRetries; i += 1) {
 		const result = await attempt();
 		if (result.ok) return result;
 		last = result.error;
-		if (!isTransientGitHubError(last)) return { ok: false, error: last };
+		if (!isTransientForgeError(last)) return { ok: false, error: last };
 		const waitMs = retryDelayFor(last, delayMs);
 		if (i < maxRetries && waitMs > 0) {
 			await sleep(waitMs);

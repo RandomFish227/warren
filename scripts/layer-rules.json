@@ -88,6 +88,18 @@
 			]
 		},
 		{
+			"name": "forge-providers-share-only-the-neutral-transport",
+			"why": "A forge provider reaches another provider's internals through nothing. The shared transport lives in src/forge/http/ (readers, retry policy, status classifier, request executor, token source) and every provider imports THAT. This rule exists because the older forge-transport-is-forge-only rule allows src/forge/ wholesale, which would happily permit src/forge/gitlab/ to import src/forge/github/http.ts -- and that is exactly how a second provider silently becomes a subclass of the first. A GitLab arm importing the GitHub transport inherits application/vnd.github+json, the pinned x-github-api-version header, and the 403-is-a-rate-limit rule that is false on GitLab, where a 403 is a genuine denial.",
+			"from": ["src/forge/gitlab/"],
+			"forbidImports": ["src/forge/github/", "src/forge/github-app/"]
+		},
+		{
+			"name": "github-forge-does-not-import-gitlab",
+			"why": "The other half of the symmetry above, kept for the same reason extensions-are-standalone is symmetric: a one-way seam is not a seam. src/forge/github-app/ may import src/forge/github/ because the App mode IS the GitHub provider with a different credential source, but neither may reach into the GitLab arm.",
+			"from": ["src/forge/github/", "src/forge/github-app/"],
+			"forbidImports": ["src/forge/gitlab/"]
+		},
+		{
 			"name": "ui-is-a-browser-consumer",
 			"why": "The UI is a Vite browser bundle. It consumes the import-nothing kernel (src/core/) and the SDK's browser-safe NDJSON reader, and nothing else in src/: any other module drags bun:sqlite or drizzle toward the browser. tsconfig.app.json's `include` list failing with TS6307 is a build accident, not a seam guard \u2014 this rule is the guard. Mirrors AGENTS.md: the UI consumes src/core, its own code, and the re-exported client types.",
 			"from": ["src/ui/"],

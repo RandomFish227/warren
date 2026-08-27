@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ForgeConfigError } from "../errors.ts";
-import { jsonResponse, recordingFetch } from "../github/test-helpers.ts";
+import { jsonResponse, recordingFetch } from "../http/test-helpers.ts";
 import {
 	GITHUB_APP_ID_ENV,
 	GITHUB_APP_INSTALLATION_ID_ENV,
